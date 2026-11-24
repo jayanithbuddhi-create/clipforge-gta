@@ -61,6 +61,11 @@ STYLES = {
 }
 
 
+def env(k, d=""):
+    """Valore dal workflow (pulsante Run) o dal comando inviato dal telefono (richiesta GitHub)."""
+    return (os.environ.get(k) or os.environ.get("CMD_" + k) or d).strip()
+
+
 def log(*a):
     print("[ClipForge]", *a, flush=True)
 
@@ -191,10 +196,8 @@ def scout():
     cfg = load_cfg()
     fetch_pages()
     st = {"jobs": [], "clips": [], "inizio": int(time.time())}
-    link = (os.environ.get("LINK") or "").strip()
-    style_in = (os.environ.get("STILE") or "").strip()
-    cam_in = (os.environ.get("FACECAM") or "").strip()
-    minutes = float(os.environ.get("MINUTI") or cfg.get("minuti", 10))
+    link, style_in, cam_in = env("LINK"), env("STILE"), env("FACECAM")
+    minutes = max(1.0, min(30.0, float(env("MINUTI") or cfg.get("minuti", 10))))
     lives = english_gta_lives(30)
     log(f"Scout: {len(lives)} live GTA V in inglese adesso")
     mine = []
@@ -226,7 +229,7 @@ def scout():
                            "stile": style_in or info.get("stile") or cfg.get("stile_default", "hype"),
                            "facecam": cam_in or cam_for(cfg, ch), "minuti": minutes,
                            "da": float(os.environ.get("DA") or 0), "titolo": info.get("titolo", ""), "webcam": info.get("webcam")})
-    elif os.environ.get("SOLO_SCOUT") != "1":
+    elif env("SOLO_SCOUT") != "1":
         recent = recent_clipped()
         others = [l for l in live_list if not l.get("tuo")] if cfg.get("scopri_top_gta", True) else []
         if cfg.get("solo_con_webcam", True):

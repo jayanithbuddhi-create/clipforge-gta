@@ -3,6 +3,8 @@ name: ClipForge GTA
 on:
   schedule:
     - cron: "7,27,47 * * * *"   # ogni 20 minuti
+  issues:
+    types: [opened]               # comando dal telefono: "Clippa" nella galleria apre una richiesta gia' compilata
   workflow_dispatch:
     inputs:
       link:
@@ -32,6 +34,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: clipforge
@@ -48,10 +51,30 @@ env:
 
 jobs:
   agenti:
+    # le richieste valgono solo se le apre il proprietario del progetto e iniziano con "ClipForge"
+    if: github.event_name != 'issues' || (github.event.issue.user.login == github.repository_owner && startsWith(github.event.issue.title, 'ClipForge'))
     runs-on: ubuntu-latest
     timeout-minutes: 110
     steps:
       - uses: actions/checkout@v4
+
+      - name: "Comando dal telefono"
+        if: github.event_name == 'issues'
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          ev = json.load(open(os.environ["GITHUB_EVENT_PATH"]))
+          body = (ev["issue"].get("body") or "")
+          keys = {"link": "CMD_LINK", "stile": "CMD_STILE", "minuti": "CMD_MINUTI", "facecam": "CMD_FACECAM", "solo_scout": "CMD_SOLO_SCOUT"}
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              for line in body.splitlines():
+                  m = re.match(r"\s*(\w+)\s*:\s*(\S+)\s*$", line)
+                  if m and m.group(1).lower() in keys and re.fullmatch(r"[A-Za-z0-9_:/.\-]{1,120}", m.group(2)):
+                      f.write(f"{keys[m.group(1).lower()]}={m.group(2)}\n")
+          PY
+          gh issue comment ${{ github.event.issue.number }} --body "Ricevuto: gli agenti sono partiti. Le clip arrivano nella galleria tra circa 15 minuti." -R ${{ github.repository }} || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-python@v5
         with:
@@ -75,17 +98,23 @@ jobs:
         run: python clipforge/run.py scout
 
       - name: "Hunter · registra la live"
-        if: env.SOLO_SCOUT != '1'
+        if: env.SOLO_SCOUT != '1' && env.CMD_SOLO_SCOUT != '1'
         run: python clipforge/run.py record
 
       - name: "Hunter · analizza hype e facecam"
-        if: env.SOLO_SCOUT != '1'
+        if: env.SOLO_SCOUT != '1' && env.CMD_SOLO_SCOUT != '1'
         run: python clipforge/run.py analyze
 
       - name: "Judge + Editor · sceglie e monta le clip"
-        if: env.SOLO_SCOUT != '1'
+        if: env.SOLO_SCOUT != '1' && env.CMD_SOLO_SCOUT != '1'
         run: python clipforge/run.py edit
 
       - name: "Pubblica · galleria"
-        if: env.SOLO_SCOUT != '1'
+        if: env.SOLO_SCOUT != '1' && env.CMD_SOLO_SCOUT != '1'
         run: python clipforge/run.py publish
+
+      - name: "Chiude la richiesta"
+        if: always() && github.event_name == 'issues'
+        run: gh issue close ${{ github.event.issue.number }} -R ${{ github.repository }} --comment "Fatto ✅ Apri la galleria per vedere le clip." || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

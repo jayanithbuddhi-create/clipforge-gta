@@ -201,8 +201,8 @@ details summary{cursor:pointer;font-size:13px;color:var(--muted)}.cap{white-spac
 <!-- foglio: impostazioni / chiave -->
 <div class="sheet" id="sheetSet" role="dialog" aria-modal="true" aria-labelledby="ssTitle">
   <div class="grab"></div>
-  <h3 id="ssTitle">Collega i comandi</h3>
-  <p class="lead">Per far partire gli agenti da qui serve una chiave GitHub, da creare una sola volta. Resta salvata solo su questo telefono.</p>
+  <h3 id="ssTitle">Tempo reale (facoltativo)</h3>
+  <p class="lead"><b>Non serve per clippare</b>: "Clippa" funziona già, basta toccare Create su GitHub. Con una chiave GitHub invece gli agenti si aggiornano ogni pochi secondi e le live partono con un tocco solo. La chiave resta salvata solo su questo telefono.</p>
   <ol class="steps">
     <li>Apri <a id="patLink" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">questa pagina di GitHub</a>.</li>
     <li><b>Token name:</b> scrivi <b>ClipForge</b>. <b>Expiration:</b> scegli 1 anno.</li>
@@ -385,6 +385,15 @@ $("lives").addEventListener("click", e => { const b = e.target.closest("[data-cl
   pick = lives[+b.dataset.clip]; $("scTitle").textContent = `Vuoi clippare la live di ${pick.nome}?`;
   $("scSub").textContent = `${kfmt(+pick.spettatori||0)} spettatori · ${pick.titolo}`.slice(0, 140);
   setStyle(pick.stile || "hype"); $("cam").value = pick.webcam ? "auto" : "none"; $("scWarn").classList.toggle("hidden", !!pick.webcam); openSheet("sheetClip"); });
+function issueUrl(inputs){
+  const title = inputs.solo_scout ? "ClipForge: aggiorna live" : `ClipForge: clippa ${inputs.link.split("/").pop()}`;
+  const body = Object.entries(inputs).map(([k,v]) => `${k}: ${v}`).join("\n") + "\n\n(Tocca Create / Submit: gli agenti partono da soli)";
+  return `https://github.com/${OWNER}/${REPO}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+}
+function openIssue(inputs){
+  const a = document.createElement("a"); a.href = issueUrl(inputs); a.target = "_blank"; a.rel = "noopener";
+  document.body.appendChild(a); a.click(); a.remove();
+}
 async function dispatch(inputs){
   const r = await fetch(API + "/actions/workflows/clipforge.yml/dispatches", {method:"POST",
     headers:{"Accept":"application/vnd.github+json","Authorization":"Bearer "+token,"Content-Type":"application/json"},
@@ -393,16 +402,17 @@ async function dispatch(inputs){
 }
 $("goClip").addEventListener("click", async () => {
   if (!pick) return;
-  if (!token){ closeSheets(); toast("Prima collega i comandi (una volta sola)"); openSheet("sheetSet"); return; }
+  const inputs = {link:`https://www.twitch.tv/${pick.login}`, stile:pickStyle, minuti:String(pickMin), facecam:$("cam").value};
+  if (!token){ openIssue(inputs); closeSheets(); toast("Su GitHub tocca Create: gli agenti partono"); setTimeout(poll, 60000); return; }
   const b = $("goClip"); b.disabled = true; b.textContent = "Avvio gli agenti…";
   try{
-    await dispatch({link:`https://www.twitch.tv/${pick.login}`, stile:pickStyle, minuti:String(pickMin), facecam:$("cam").value});
+    await dispatch(inputs);
     closeSheets(); toast(`Agenti partiti su ${pick.nome}: clip in circa ${pickMin + 6} min`); showView("agenti"); setTimeout(poll, 4000);
   }catch(err){ toast(err.message === "chiave" ? "La chiave non è valida: ricollegala" : "Avvio non riuscito, riprova"); if (err.message === "chiave") openSheet("sheetSet"); }
   b.disabled = false; b.textContent = "Sì, clippa questa live";
 });
 $("refreshLive").addEventListener("click", async () => {
-  if (!token){ toast("Collega i comandi per aggiornare a richiesta"); openSheet("sheetSet"); return; }
+  if (!token){ openIssue({solo_scout:"1"}); toast("Su GitHub tocca Create: lo Scout aggiorna la lista"); return; }
   try{ await dispatch({solo_scout:"1"}); toast("Lo Scout controlla le live: lista nuova in ~2 min"); setTimeout(load, 120000); }
   catch(e){ toast("Aggiornamento non riuscito"); }
 });
