@@ -1,21 +1,17 @@
 {
-  "canali": [
-    {"nome": "summit1g", "facecam": "br"},
-    {"nome": "xqc", "facecam": "br"},
-    {"nome": "buddha", "facecam": "br"}
-  ],
-  "facecam_default": "br",
-  "solo_gta": true,
+  "canali": [],
+  "facecam_default": "auto",
+  "stile_default": "hype",
   "scopri_top_gta": true,
-  "max_live_per_giro_scoperti": 1,
   "escludi": [],
-  "modo": "rp",
   "minuti": 10,
-  "durata_clip": 30,
   "clip_per_live": 2,
   "voto_minimo": 55,
-  "max_live_per_giro": 2,
+  "max_live_per_giro": 1,
   "teaser": true,
+  "micro_zoom": true,
   "segui_azione": true,
+  "sottotitoli": true,
+  "whisper_model": "base.en",
   "tieni_clip": 40
 }

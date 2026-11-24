@@ -2,19 +2,31 @@ name: ClipForge GTA
 
 on:
   schedule:
-    - cron: "7,27,47 * * * *"   # ogni 20 minuti lo Scout controlla gli streamer
+    - cron: "7,27,47 * * * *"   # ogni 20 minuti
   workflow_dispatch:
     inputs:
       link:
-        description: "Link Twitch da clippare subito (live o VOD). Vuoto = controlla la lista"
+        description: "Link Twitch da clippare (live o VOD). Vuoto = gli agenti scelgono da soli"
+        required: false
+        default: ""
+      stile:
+        description: "Stile: hype, funny, action, drama"
         required: false
         default: ""
       minuti:
         description: "Minuti da registrare"
         required: false
         default: "10"
+      facecam:
+        description: "Facecam: auto, tl, tr, bl, br, none"
+        required: false
+        default: ""
       da:
-        description: "Solo per i VOD: parti dal minuto"
+        description: "Solo VOD: parti dal minuto"
+        required: false
+        default: "0"
+      solo_scout:
+        description: "1 = aggiorna solo la lista delle live"
         required: false
         default: "0"
 
@@ -25,26 +37,53 @@ concurrency:
   group: clipforge
   cancel-in-progress: false
 
+env:
+  LINK: ${{ github.event.inputs.link }}
+  STILE: ${{ github.event.inputs.stile }}
+  MINUTI: ${{ github.event.inputs.minuti }}
+  FACECAM: ${{ github.event.inputs.facecam }}
+  DA: ${{ github.event.inputs.da }}
+  SOLO_SCOUT: ${{ github.event.inputs.solo_scout }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 jobs:
   agenti:
     runs-on: ubuntu-latest
-    timeout-minutes: 100
+    timeout-minutes: 110
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
 
-      - name: Strumenti (ffmpeg, streamlink)
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: whisper-base-en-v1
+
+      - name: "Preparazione"
         run: |
           which ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)
-          pip install -q streamlink numpy
+          pip install -q -r requirements.txt
 
-      - name: Scout, Hunter, Judge, Editor
-        env:
-          LINK: ${{ github.event.inputs.link }}
-          MINUTI: ${{ github.event.inputs.minuti }}
-          DA: ${{ github.event.inputs.da }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python clipforge/run.py
+      - name: "Scout · cerca le live GTA in inglese"
+        run: python clipforge/run.py scout
+
+      - name: "Hunter · registra la live"
+        if: env.SOLO_SCOUT != '1'
+        run: python clipforge/run.py record
+
+      - name: "Hunter · analizza hype e facecam"
+        if: env.SOLO_SCOUT != '1'
+        run: python clipforge/run.py analyze
+
+      - name: "Judge + Editor · sceglie e monta le clip"
+        if: env.SOLO_SCOUT != '1'
+        run: python clipforge/run.py edit
+
+      - name: "Pubblica · galleria"
+        if: env.SOLO_SCOUT != '1'
+        run: python clipforge/run.py publish
