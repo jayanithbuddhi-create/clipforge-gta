@@ -360,7 +360,7 @@ def webcam_in_preview(url):
 
 def cam_box(cx, cy, fw, sw, shh):
     """Dalla faccia al riquadro webcam, con la stessa forma del riquadro in alto nella clip (1080x768)."""
-    w = min(0.5, max(0.12, fw * 3.0))
+    w = min(0.5, max(0.11, fw * 2.6))
     h = min(0.6, w * sw / shh / (OUT_W / (OUT_H * SPLIT)))
     x = min(max(0, cx - w / 2), 1 - w)
     y = min(max(0, cy - h * 0.42), 1 - h)
