@@ -214,7 +214,8 @@ def scout():
         kind, ident, url = parse_link(link)
         ch = vod_channel(ident) if kind == "vod" else ident
         info = next((l for l in live_list if l["login"] == ch), {})
-        st["jobs"].append({"url": url, "ch": ch, "stile": style_in or info.get("stile") or cfg.get("stile_default", "hype"),
+        st["jobs"].append({"url": url, "ch": ch, "nome": info.get("nome") or ch,
+                           "stile": style_in or info.get("stile") or cfg.get("stile_default", "hype"),
                            "facecam": cam_in or cam_for(cfg, ch), "minuti": minutes,
                            "da": float(os.environ.get("DA") or 0), "titolo": info.get("titolo", "")})
     elif os.environ.get("SOLO_SCOUT") != "1":
@@ -225,7 +226,8 @@ def scout():
                 break
             if l["login"] in recent and not l.get("tuo"):
                 continue
-            st["jobs"].append({"url": f"https://www.twitch.tv/{l['login']}", "ch": l["login"], "stile": l["stile"],
+            st["jobs"].append({"url": f"https://www.twitch.tv/{l['login']}", "ch": l["login"], "nome": l.get("nome") or l["login"],
+                               "stile": l["stile"],
                                "facecam": cam_for(cfg, l["login"]), "minuti": minutes, "da": 0, "titolo": l["titolo"]})
     for j in st["jobs"]:
         if j["stile"] not in STYLES:
@@ -454,7 +456,8 @@ def analyze():
         log(f"Judge: {len(cands)} candidati, tengo {len(chosen)} -> " + ", ".join(str(c["viral"]) for c in chosen))
         for c in chosen:
             a, b = int(c["start"]), int(math.ceil(c["end"]))
-            c["cx"] = float(np.clip(0.5 + (np.median(cx[a:b]) - 0.5) * 0.8, 0.2, 0.8)) if cfg.get("segui_azione", True) else 0.5
+            k_follow = 0.8 if cam else 0.35         # senza facecam il gioco e' piu' stretto: resta sul personaggio al centro
+            c["cx"] = float(np.clip(0.5 + (np.median(cx[a:b]) - 0.5) * k_follow, 0.3, 0.7)) if cfg.get("segui_azione", True) else 0.5
             c["zooms"] = micro_peaks(score, zA, zS, c, mx) if cfg.get("micro_zoom", True) else []
         step = max(1, n // 160)
         st["analisi"].append({"ch": j["ch"], "durata": round(dur), "passo": step, "stile": j["stile"],
@@ -640,23 +643,29 @@ def style_hex(style):
 
 
 def finish(base, c, ch, style, split, top, teaser_len, total, words, out_mp4, out_jpg):
-    hook_file, ch_file, ass_file = (os.path.join(WORK, f) for f in ("hook.txt", "ch.txt", "subs.ass"))
-    with open(hook_file, "w") as f:
-        f.write(wrap(c["hook"]))
+    ch_file, ass_file = os.path.join(WORK, "ch.txt"), os.path.join(WORK, "subs.ass")
+    hook_lines = wrap(c["hook"]).split("\n")
+    hook_files = []
+    for k, line in enumerate(hook_lines):
+        hf = os.path.join(WORK, f"hook{k}.txt")
+        with open(hf, "w") as f:
+            f.write(line)
+        hook_files.append(hf)
     with open(ch_file, "w") as f:
         f.write(f"twitch.tv/{ch}")
     sub_y = (top + int((OUT_H - top) * 0.6)) if split else 1330
     n_sub = make_ass(words, style, ass_file, sub_y) if words else 0
-    nl = wrap(c["hook"]).count("\n") + 1
-    ty = (top if split else 250) - (nl * 56) // 2
+    nl, lh = len(hook_lines), 66
+    ty = (top if split else 250) - (nl * lh) // 2 + 4
     esc = lambda p: p.replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
     vf = []
     if split:
         vf.append(f"drawbox=x=0:y={top - 2}:w=iw:h=4:color=black:t=fill")
     if n_sub:
         vf.append(f"subtitles='{esc(ass_file)}':fontsdir='{esc(FONTS)}'")
-    vf.append(f"drawtext=fontfile='{esc(FONT_B)}':textfile='{esc(hook_file)}':fontsize=42:fontcolor=0x111111:line_spacing=12:"
-              f"text_align=C:box=1:boxcolor=white:boxborderw=24:x=(w-text_w)/2:y={ty}:alpha='min(1,t/0.25)'")
+    for k, hf in enumerate(hook_files):
+        vf.append(f"drawtext=fontfile='{esc(FONT_B)}':textfile='{esc(hf)}':fontsize=42:fontcolor=0x111111:"
+                  f"box=1:boxcolor=white:boxborderw=18:x=(w-text_w)/2:y={ty + k * lh}:alpha='min(1,t/0.25)'")
     vf.append(f"drawtext=fontfile='{esc(FONT_S)}':textfile='{esc(ch_file)}':fontsize=30:fontcolor=white:box=1:"
               f"boxcolor=black@0.55:boxborderw=14:x=(w-text_w)/2:y=h-250")
     fc = f"[0:v]{','.join(vf)}[vt];[vt][1:v]overlay=x='-w+W*t/{total:.2f}':y=H-10:shortest=1[v]"
@@ -673,7 +682,7 @@ def finish(base, c, ch, style, split, top, teaser_len, total, words, out_mp4, ou
 def caption(c, ch, style_key, title):
     """Dalla ricerca: 1 riga di hook con gioco e tipo di momento, 1 call to action, 5 hashtag pertinenti."""
     style = STYLES[style_key]
-    slug = re.sub(r"\W", "", ch.lower())
+    slug = re.sub(r"\W", "", ch.lower())   # ch = nome visualizzato
     rp = bool(re.search(r"\brp\b|roleplay|nopixel", (title or "").lower())) or style_key in ("funny", "drama")
     moment = {"hype": "reaction", "funny": "RP moment", "action": "getaway", "drama": "RP drama"}[style_key]
     tags = [f"#{slug}", "#gtarp" if rp else "#gta5", "#gta", "#twitchclips", "#fyp"]
@@ -699,7 +708,7 @@ def edit():
                 words = transcribe(base, cfg.get("whisper_model", "base.en")) if cfg.get("sottotitoli", True) else []
                 kind = "both" if c["has_a"] and c["has_s"] else "audio" if c["has_a"] else "scene" if c["has_s"] else "weak"
                 hook = quote_hook(words, teaser_len + c["peak"] - c["start"]) if j["stile"] != "action" else None
-                opts = [h.format(n=j["ch"]) for h in bank[kind] + [x for kk in ("both", "audio", "scene") for x in bank[kk]]]
+                opts = [h.format(n=j.get("nome") or j["ch"]) for h in bank[kind] + [x for kk in ("both", "audio", "scene") for x in bank[kk]]]
                 off = int(time.time()) // 60
                 pick = next((opts[(off + q) % len(opts)] for q in range(len(opts)) if opts[(off + q) % len(opts)] not in used), opts[0])
                 c["hook"] = hook if hook and hook not in used else pick
@@ -712,7 +721,7 @@ def edit():
                 log("Editor: montaggio fallito ->", e)
                 continue
             made.append({"id": cid, "file": f"clips/{cid}.mp4", "poster": f"clips/{cid}.jpg", "ch": j["ch"], "stile": j["stile"],
-                         "hook": c["hook"], "caption": caption(c, j["ch"], j["stile"], j.get("titolo", "")),
+                         "hook": c["hook"], "caption": caption(c, j.get("nome") or j["ch"], j["stile"], j.get("titolo", "")),
                          "viral": c["viral"], "subs": c["subs"], "zoom": len(c.get("zooms", [])), "sottotitoli": n_sub > 0,
                          "facecam": bool(j.get("cam")), "durata": round(total, 1), "created": int(time.time()),
                          "at": round(c["start"]), "mb": round(os.path.getsize(mp4) / 1048576, 1)})
