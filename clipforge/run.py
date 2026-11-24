@@ -227,8 +227,8 @@ def scout():
             if l["login"] in recent and not l.get("tuo"):
                 continue
             st["jobs"].append({"url": f"https://www.twitch.tv/{l['login']}", "ch": l["login"], "nome": l.get("nome") or l["login"],
-                               "stile": l["stile"],
-                               "facecam": cam_for(cfg, l["login"]), "minuti": minutes, "da": 0, "titolo": l["titolo"]})
+                               "stile": style_in or l["stile"],
+                               "facecam": cam_in or cam_for(cfg, l["login"]), "minuti": minutes, "da": 0, "titolo": l["titolo"]})
     for j in st["jobs"]:
         if j["stile"] not in STYLES:
             j["stile"] = "hype"
@@ -325,6 +325,7 @@ def find_facecam(path, dur, sw, shh):
         img = np.frombuffer(raw[:960 * h], np.uint8).reshape(h, 960)
         for (x, y, w, hh) in casc.detectMultiScale(img, 1.1, 6, minSize=(36, 36)):
             hits.append((k, (x + w / 2) / 960, (y + hh / 2) / h, w / 960, hh / h))
+    log(f"Hunter: {len(hits)} volti visti in {N} fotogrammi")
     if not hits:
         return None
     best, best_n = None, 0
@@ -628,7 +629,7 @@ def quote_hook(words, peak_t):
     for s in sents:
         txt = " ".join(x["w"] for x in s).strip()
         n = len(txt.split())
-        if not (2 <= n <= 8) or abs(s[0]["t0"] - peak_t) > 6 or BAD.search(txt):
+        if not (3 <= n <= 8) or abs(s[0]["t0"] - peak_t) > 6 or BAD.search(txt):
             continue
         sc = (2 if "!" in txt else 1 if "?" in txt else 0.3) + \
              (1 if re.search(r"\b(no way|bro|what|why|oh my|run|dude|wait|stop)\b", txt.lower()) else 0)
