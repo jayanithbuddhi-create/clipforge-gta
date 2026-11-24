@@ -95,7 +95,7 @@ def gql(query, variables=None):
         return json.loads(r.read())
 
 
-NODE = ("node{title viewersCount language createdAt previewImageURL(width:440,height:248) "
+NODE = ("node{title viewersCount language createdAt previewImageURL(width:440,height:248) big:previewImageURL(width:1280,height:720) "
         "broadcaster{login displayName profileImageURL(width:70)} freeformTags{name}}")
 
 
@@ -116,7 +116,7 @@ def english_gta_lives(n=30):
         out.append({"login": b["login"].lower(), "nome": b.get("displayName") or b["login"], "titolo": nd.get("title") or "",
                     "spettatori": nd.get("viewersCount") or 0, "anteprima": nd.get("previewImageURL") or "",
                     "avatar": b.get("profileImageURL") or "", "tag": [t["name"] for t in nd.get("freeformTags") or []][:4],
-                    "dal": nd.get("createdAt") or ""})
+                    "dal": nd.get("createdAt") or "", "grande": nd.get("big") or ""})
     out.sort(key=lambda l: -l["spettatori"])
     return out
 
@@ -124,7 +124,8 @@ def english_gta_lives(n=30):
 def channel_live(login):
     try:
         d = gql('query($l:String!){user(login:$l){login displayName profileImageURL(width:70) stream{title viewersCount '
-                'language createdAt previewImageURL(width:440,height:248) game{name}}}}', {"l": login})
+                'language createdAt previewImageURL(width:440,height:248) big:previewImageURL(width:1280,height:720) '
+                'game{name}}}}', {"l": login})
         u = (d.get("data") or {}).get("user")
         if not u or not u.get("stream"):
             return None
@@ -132,7 +133,7 @@ def channel_live(login):
         return {"login": login, "nome": u.get("displayName") or login, "titolo": s.get("title") or "",
                 "spettatori": s.get("viewersCount") or 0, "anteprima": s.get("previewImageURL") or "",
                 "avatar": u.get("profileImageURL") or "", "gioco": (s.get("game") or {}).get("name") or "",
-                "lingua": s.get("language") or "", "dal": s.get("createdAt") or "", "tag": []}
+                "lingua": s.get("language") or "", "dal": s.get("createdAt") or "", "tag": [], "grande": s.get("big") or ""}
     except Exception as e:
         log("Scout:", login, "non controllabile ->", e)
         return None
@@ -208,8 +209,15 @@ def scout():
     seen = {m["login"] for m in mine}
     excl = set(x.lower() for x in cfg.get("escludi", []))
     live_list = [l for l in mine + [l for l in lives if l["login"] not in seen] if l["login"] not in excl]
-    for l in live_list:
+    for l in live_list[:30]:
         l["stile"] = auto_style(l["titolo"], l.get("tag", []))
+        f = webcam_in_preview(l.pop("grande", "") or l["anteprima"])
+        l["webcam"] = [round(v, 4) for v in f[:4]] if f else None
+    for l in live_list[30:]:
+        l.pop("grande", None)
+        l["stile"] = auto_style(l["titolo"], l.get("tag", []))
+        l["webcam"] = None
+    log(f"Scout: {sum(1 for l in live_list if l.get('webcam'))} live su {len(live_list)} hanno la webcam")
     if link:
         kind, ident, url = parse_link(link)
         ch = vod_channel(ident) if kind == "vod" else ident
@@ -217,10 +225,13 @@ def scout():
         st["jobs"].append({"url": url, "ch": ch, "nome": info.get("nome") or ch,
                            "stile": style_in or info.get("stile") or cfg.get("stile_default", "hype"),
                            "facecam": cam_in or cam_for(cfg, ch), "minuti": minutes,
-                           "da": float(os.environ.get("DA") or 0), "titolo": info.get("titolo", "")})
+                           "da": float(os.environ.get("DA") or 0), "titolo": info.get("titolo", ""), "webcam": info.get("webcam")})
     elif os.environ.get("SOLO_SCOUT") != "1":
         recent = recent_clipped()
-        pool = mine + ([l for l in live_list if not l.get("tuo")] if cfg.get("scopri_top_gta", True) else [])
+        others = [l for l in live_list if not l.get("tuo")] if cfg.get("scopri_top_gta", True) else []
+        if cfg.get("solo_con_webcam", True):
+            others = [l for l in others if l.get("webcam")]       # in automatico solo live con la faccia dello streamer
+        pool = mine + others
         for l in pool:
             if len(st["jobs"]) >= int(cfg.get("max_live_per_giro", 1)):
                 break
@@ -228,7 +239,8 @@ def scout():
                 continue
             st["jobs"].append({"url": f"https://www.twitch.tv/{l['login']}", "ch": l["login"], "nome": l.get("nome") or l["login"],
                                "stile": style_in or l["stile"],
-                               "facecam": cam_in or cam_for(cfg, l["login"]), "minuti": minutes, "da": 0, "titolo": l["titolo"]})
+                               "facecam": cam_in or cam_for(cfg, l["login"]), "minuti": minutes, "da": 0, "titolo": l["titolo"],
+                               "webcam": l.get("webcam")})
     for j in st["jobs"]:
         if j["stile"] not in STYLES:
             j["stile"] = "hype"
@@ -302,47 +314,88 @@ def motion(path, n, cam):
     return mot, cx
 
 
-def find_facecam(path, dur, sw, shh):
-    """Cerca la webcam dello streamer: una faccia che resta nello stesso punto in quasi tutti i fotogrammi."""
+_YN = None
+
+
+def face_model():
+    """YuNet (OpenCV): trova i volti molto meglio del vecchio Haar, anche piccoli e un po' girati."""
+    global _YN
+    if _YN is not None:
+        return _YN or None
     try:
         import cv2
+        path = os.environ.get("YUNET_ONNX") or os.path.join(ROOT, "_models", "yunet.onnx")
+        _YN = cv2.FaceDetectorYN.create(path, "", (320, 320), 0.7, 0.3, 50) if os.path.exists(path) else False
+    except Exception as e:
+        log("Rilevatore volti non disponibile ->", e)
+        _YN = False
+    return _YN or None
+
+
+def faces_in(img):
+    """Volti in un'immagine BGR: lista di (cx, cy, w, h, punteggio) normalizzati 0-1."""
+    det = face_model()
+    if det is None or img is None:
+        return []
+    h, w = img.shape[:2]
+    det.setInputSize((w, h))
+    _, f = det.detect(img)
+    if f is None:
+        return []
+    return [((x + fw / 2) / w, (y + fh / 2) / h, fw / w, fh / h, float(sc)) for x, y, fw, fh, *rest, sc in f.tolist()
+            if fw / w > 0.012]
+
+
+def webcam_in_preview(url):
+    """Lo Scout guarda l'anteprima della live: c'e' una faccia vera (webcam)?"""
+    try:
+        import cv2
+        data = urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=15).read()
+        img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+        fs = [f for f in faces_in(img) if f[4] >= 0.8]
+        return max(fs, key=lambda f: f[4]) if fs else None
     except Exception:
         return None
-    xml = os.environ.get("HAAR_XML") or os.path.join(getattr(getattr(cv2, "data", None), "haarcascades", ""),
-                                                      "haarcascade_frontalface_default.xml")
-    casc = cv2.CascadeClassifier(xml) if os.path.exists(xml) else None
-    if casc is None or casc.empty():
+
+
+def cam_box(cx, cy, fw, sw, shh):
+    """Dalla faccia al riquadro webcam, con la stessa forma del riquadro in alto nella clip (1080x768)."""
+    w = min(0.5, max(0.12, fw * 3.0))
+    h = min(0.6, w * sw / shh / (OUT_W / (OUT_H * SPLIT)))
+    x = min(max(0, cx - w / 2), 1 - w)
+    y = min(max(0, cy - h * 0.42), 1 - h)
+    return [round(x, 4), round(y, 4), round(w, 4), round(h, 4)]
+
+
+def find_facecam(path, dur, sw, shh, hint=None):
+    """La webcam e' la faccia che resta nello stesso punto in quasi tutti i fotogrammi."""
+    if face_model() is None:
         log("Hunter: rilevatore di volti non disponibile")
-        return None
-    hits, N = [], 14
-    h = int(round(960 * shh / sw / 2) * 2)
+        return cam_box(*hint[:3], sw, shh) if hint else None
+    W, H, N, hits = 1280, 720, 16, []
     for k in range(N):
         t = dur * (k + 0.5) / N
         raw = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{t:.1f}", "-i", path, "-frames:v", "1",
-                              "-vf", f"scale=960:{h},format=gray", "-f", "rawvideo", "-"], capture_output=True).stdout
-        if len(raw) < 960 * h:
+                              "-vf", f"scale={W}:{H}", "-pix_fmt", "bgr24", "-f", "rawvideo", "-"], capture_output=True).stdout
+        if len(raw) < W * H * 3:
             continue
-        img = np.frombuffer(raw[:960 * h], np.uint8).reshape(h, 960)
-        for (x, y, w, hh) in casc.detectMultiScale(img, 1.1, 6, minSize=(36, 36)):
-            hits.append((k, (x + w / 2) / 960, (y + hh / 2) / h, w / 960, hh / h))
+        img = np.frombuffer(raw[:W * H * 3], np.uint8).reshape(H, W, 3)
+        hits += [(k,) + f for f in faces_in(img)]
     log(f"Hunter: {len(hits)} volti visti in {N} fotogrammi")
-    if not hits:
-        return None
     best, best_n = None, 0
-    for _, cx, cy, fw, fh in hits:
-        near = [q for q in hits if abs(q[1] - cx) < 0.04 and abs(q[2] - cy) < 0.06]
-        frames = len({q[0] for q in near})
-        if frames > best_n:
-            best_n, best = frames, near
-    if best_n < max(4, int(N * 0.45)):
-        return None
-    cx = float(np.median([b[1] for b in best])); cy = float(np.median([b[2] for b in best]))
-    fw = float(np.median([b[3] for b in best]))
-    w = min(0.45, fw * 2.8)
-    h = min(0.55, w * sw / shh / (OUT_W / (OUT_H * SPLIT)))   # stessa forma del riquadro facecam della clip
-    x = min(max(0, cx - w / 2), 1 - w); y = min(max(0, cy - h * 0.45), 1 - h)
-    log(f"Hunter: facecam trovata in {best_n}/{N} fotogrammi a ({cx:.2f},{cy:.2f})")
-    return [round(x, 4), round(y, 4), round(w, 4), round(h, 4)]
+    for _, cx, cy, fw, fh, sc in hits:
+        near = [q for q in hits if abs(q[1] - cx) < 0.035 and abs(q[2] - cy) < 0.05]
+        n = len({q[0] for q in near})
+        if n > best_n:
+            best_n, best = n, near
+    if best_n >= max(5, int(N * 0.4)):
+        cx, cy, fw = (float(np.median([b[i] for b in best])) for i in (1, 2, 3))
+        log(f"Hunter: webcam trovata in {best_n}/{N} fotogrammi a ({cx:.2f},{cy:.2f})")
+        return cam_box(cx, cy, fw, sw, shh)
+    if hint:
+        log("Hunter: uso la webcam vista dallo Scout nell'anteprima")
+        return cam_box(*hint[:3], sw, shh)
+    return None
 
 
 def smooth(x, w=3):
@@ -429,7 +482,7 @@ def analyze():
         style = STYLES.get(j["stile"], STYLES["hype"])
         cam = None
         if j["facecam"] == "auto":
-            cam = find_facecam(src, dur, sw, shh)
+            cam = find_facecam(src, dur, sw, shh, j.get("webcam"))
             if not cam:
                 log("Hunter: nessuna facecam fissa trovata, uso il gioco a tutto schermo")
         elif j["facecam"] in CAM_PRESETS:

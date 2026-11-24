@@ -58,6 +58,9 @@ h2{font:400 24px/1.1 Anton,Impact,sans-serif;margin:0 0 4px}
 .live .pv{position:relative;aspect-ratio:16/9;background:#000 center/cover}
 .live .pv .tag{position:absolute;left:8px;top:8px;font:800 11px Inter;background:var(--rec);color:#fff;border-radius:6px;padding:3px 7px}
 .live .pv .vw{position:absolute;left:8px;bottom:8px;font:700 12px Inter;background:#000b;color:#fff;border-radius:6px;padding:3px 7px}
+.live .pv .cam{position:absolute;right:8px;bottom:8px;font:800 11px Inter;border-radius:6px;padding:3px 7px;background:#35d48f;color:#06140d}
+.live .pv .cam.no{background:#000b;color:#9a93ad}
+.warn{background:#ff3b5c1f;color:#ffb3c0;border-radius:12px;padding:10px 12px;font-size:13px;margin:6px 0 0}
 .live .pv .mine{position:absolute;right:8px;top:8px;font:800 11px Inter;background:var(--gold);color:#140f00;border-radius:6px;padding:3px 7px}
 .live .b{padding:10px 12px 12px;display:flex;flex-direction:column;gap:8px}
 .live .who{display:flex;align-items:center;gap:8px;font-weight:700}.live .who img{width:28px;height:28px;border-radius:50%;background:var(--panel2)}
@@ -159,6 +162,7 @@ details summary{cursor:pointer;font-size:13px;color:var(--muted)}.cap{white-spac
       <div><h2 style="margin:0">Live GTA adesso</h2><p class="lead" style="margin:2px 0 0" id="liveLead">Streamer in inglese, i più seguiti in alto.</p></div>
       <button class="btn sm" id="refreshLive">Aggiorna</button>
     </div>
+    <div class="seg" id="camFilter" style="margin-bottom:12px"><button data-f="cam">Con webcam</button><button data-f="all">Tutte</button></div>
     <div class="lives" id="lives"></div>
   </div>
 
@@ -184,6 +188,7 @@ details summary{cursor:pointer;font-size:13px;color:var(--muted)}.cap{white-spac
   <div class="grab"></div>
   <h3 id="scTitle">Vuoi clippare questa live?</h3>
   <p class="lead" id="scSub"></p>
+  <p class="warn hidden" id="scWarn">Questa live non ha la webcam: la clip sarà solo gioco, a tutto schermo.</p>
   <div class="lbl">In che stile?</div>
   <div class="styles" id="styles"></div>
   <div class="lbl">Quanto registrare</div>
@@ -354,16 +359,20 @@ function renderStats(){
 function renderLives(){
   const fresh = lives.length && seenLive < (Date.now()/1000 - 3600);
   $("liveBadge").textContent = lives.length; $("liveBadge").classList.toggle("hidden", !fresh);
-  $("lives").innerHTML = lives.length ? lives.map((l,i) => `<article class="live">
-    <div class="pv" style="background-image:url('${safeUrl(l.anteprima)}')"><span class="tag">LIVE</span><span class="vw">👁 ${kfmt(+l.spettatori||0)}</span>${l.tuo?`<span class="mine">TUO</span>`:""}</div>
+  const shown = lives.map((l,i) => [l,i]).filter(([l]) => !camOnly || l.webcam);
+  $("lives").innerHTML = shown.length ? shown.map(([l,i]) => `<article class="live">
+    <div class="pv" style="background-image:url('${safeUrl(l.anteprima)}')"><span class="tag">LIVE</span><span class="vw">👁 ${kfmt(+l.spettatori||0)}</span>${l.tuo?`<span class="mine">TUO</span>`:""}<span class="cam ${l.webcam?"":"no"}">${l.webcam?"WEBCAM":"senza webcam"}</span></div>
     <div class="b"><div class="who">${l.avatar?`<img src="${safeUrl(l.avatar)}" alt="">`:""}${esc(l.nome)}</div>
       <div class="t">${esc(l.titolo)}</div>
       <div class="chips"><span class="chip" style="background:${STYLES[l.stile]?STYLES[l.stile].c+"26":"#9146ff26"};color:${STYLES[l.stile]?STYLES[l.stile].c:"#cbb3ff"}">${esc(STYLES[l.stile]?STYLES[l.stile].n:"")}</span>${(l.tag||[]).slice(0,3).map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</div>
       <div style="display:flex;gap:8px"><button class="btn primary sm" style="flex:1" data-clip="${i}">Clippa</button><a class="btn sm" href="https://www.twitch.tv/${encodeURIComponent(l.login)}" target="_blank" rel="noopener">Guarda</a></div>
     </div></article>`).join("")
-    : `<div class="empty" style="grid-column:1/-1">La lista arriva al prossimo giro dello Scout.</div>`;
+    : `<div class="empty" style="grid-column:1/-1">${lives.length ? "Nessuna live con webcam in questo momento. Tocca <b>Tutte</b> per vederle tutte." : "La lista arriva al prossimo giro dello Scout."}</div>`;
 }
-let pick = null, pickStyle = "hype", pickMin = 10;
+let pick = null, pickStyle = "hype", pickMin = 10, camOnly = store.get("camOnly", true);
+[...$("camFilter").children].forEach(b => b.classList.toggle("on", (b.dataset.f === "cam") === camOnly));
+$("camFilter").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; camOnly = b.dataset.f === "cam"; store.set("camOnly", camOnly);
+  [...$("camFilter").children].forEach(x => x.classList.toggle("on", x === b)); renderLives(); });
 $("styles").innerHTML = Object.entries(STYLES).map(([k,s]) => `<button class="style" data-s="${k}" style="--sc:${s.c}"><b><i></i>${s.n}</b><small>${s.d}</small></button>`).join("");
 function openSheet(id){ $("sheetBg").classList.add("on"); $(id).classList.add("on"); }
 function closeSheets(){ $("sheetBg").classList.remove("on"); document.querySelectorAll(".sheet").forEach(s => s.classList.remove("on")); }
@@ -375,7 +384,7 @@ $("mins").addEventListener("click", e => { const b = e.target.closest("button");
 $("lives").addEventListener("click", e => { const b = e.target.closest("[data-clip]"); if (!b) return;
   pick = lives[+b.dataset.clip]; $("scTitle").textContent = `Vuoi clippare la live di ${pick.nome}?`;
   $("scSub").textContent = `${kfmt(+pick.spettatori||0)} spettatori · ${pick.titolo}`.slice(0, 140);
-  setStyle(pick.stile || "hype"); $("cam").value = "auto"; openSheet("sheetClip"); });
+  setStyle(pick.stile || "hype"); $("cam").value = pick.webcam ? "auto" : "none"; $("scWarn").classList.toggle("hidden", !!pick.webcam); openSheet("sheetClip"); });
 async function dispatch(inputs){
   const r = await fetch(API + "/actions/workflows/clipforge.yml/dispatches", {method:"POST",
     headers:{"Accept":"application/vnd.github+json","Authorization":"Bearer "+token,"Content-Type":"application/json"},

@@ -3,6 +3,7 @@
   "facecam_default": "auto",
   "stile_default": "hype",
   "scopri_top_gta": true,
+  "solo_con_webcam": true,
   "escludi": [],
   "minuti": 10,
   "clip_per_live": 2,
