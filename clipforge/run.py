@@ -585,9 +585,11 @@ def make_ass(words, style, path, y):
     if cur:
         groups.append(cur)
     lines = []
-    for g in groups:
+    for gi, g in enumerate(groups):
+        nxt = groups[gi + 1][0]["t0"] if gi + 1 < len(groups) else 1e9
         for k, w in enumerate(g):
-            t1 = g[k + 1]["t0"] if k + 1 < len(g) else max(w["t1"], w["t0"] + 0.3)
+            t1 = g[k + 1]["t0"] if k + 1 < len(g) else min(max(w["t1"], w["t0"] + 0.3), nxt)
+            t1 = max(t1, w["t0"] + 0.05)
             txt = []
             for m, x in enumerate(g):
                 clean = re.sub(r"[{}\\]", "", x["w"]).upper()
