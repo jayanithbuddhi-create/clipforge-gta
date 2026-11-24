@@ -1,0 +1,50 @@
+name: ClipForge GTA
+
+on:
+  schedule:
+    - cron: "7,27,47 * * * *"   # ogni 20 minuti lo Scout controlla gli streamer
+  workflow_dispatch:
+    inputs:
+      link:
+        description: "Link Twitch da clippare subito (live o VOD). Vuoto = controlla la lista"
+        required: false
+        default: ""
+      minuti:
+        description: "Minuti da registrare"
+        required: false
+        default: "10"
+      da:
+        description: "Solo per i VOD: parti dal minuto"
+        required: false
+        default: "0"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: clipforge
+  cancel-in-progress: false
+
+jobs:
+  agenti:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Strumenti (ffmpeg, streamlink)
+        run: |
+          which ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)
+          pip install -q streamlink numpy
+
+      - name: Scout, Hunter, Judge, Editor
+        env:
+          LINK: ${{ github.event.inputs.link }}
+          MINUTI: ${{ github.event.inputs.minuti }}
+          DA: ${{ github.event.inputs.da }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python clipforge/run.py
