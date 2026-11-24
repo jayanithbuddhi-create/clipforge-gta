@@ -542,7 +542,10 @@ def transcribe(path, model_name):
     try:
         if _WHISPER is None:
             _WHISPER = WhisperModel(model_name, device="cpu", compute_type="int8")
-        segs, _ = _WHISPER.transcribe(path, word_timestamps=True, vad_filter=True, language="en", beam_size=3)
+        raw = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-vn", "-ac", "1", "-ar", "16000", "-f", "f32le", "-"],
+                             capture_output=True, check=True).stdout          # audio gia' pronto: niente PyAV
+        audio = np.frombuffer(raw, dtype=np.float32).copy()
+        segs, _ = _WHISPER.transcribe(audio, word_timestamps=True, vad_filter=True, language="en", beam_size=3)
         words = []
         for s in segs:
             for w in s.words or []:
