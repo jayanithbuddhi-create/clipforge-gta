@@ -69,7 +69,9 @@ def top_gta_live(n=3):
         d = gql('query($n:Int){game(name:"Grand Theft Auto V"){streams(first:$n){edges{node{viewersCount title '
                 'broadcaster{login}}}}}}', {"n": n})
         edges = (((d.get("data") or {}).get("game") or {}).get("streams") or {}).get("edges") or []
-        return [(e["node"]["broadcaster"]["login"].lower(), e["node"].get("viewersCount", 0)) for e in edges if e.get("node")]
+        latin = lambda t: (sum(ch.isascii() for ch in t) / max(1, len(t))) > 0.85
+        return [(e["node"]["broadcaster"]["login"].lower(), e["node"].get("viewersCount", 0)) for e in edges
+                if e.get("node") and e["node"].get("broadcaster") and latin(e["node"].get("title") or "")]
     except Exception as e:
         log("Scoperta live GTA non riuscita:", e)
         return []
@@ -445,7 +447,7 @@ def main():
             if gta:
                 jobs.append((f"https://www.twitch.tv/{ch}", ch, c.get("facecam", cfg.get("facecam_default", "br")), None))
         if not jobs and cfg.get("scopri_top_gta", True):
-            for login, viewers in top_gta_live(int(cfg.get("max_live_per_giro", 2)) + 3):
+            for login, viewers in top_gta_live(20):
                 if login in channels or login in cfg.get("escludi", []):
                     continue
                 log(f"Scout: nessuno della lista in live, prendo {login} ({viewers} spettatori su GTA V)")
