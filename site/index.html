@@ -399,11 +399,11 @@ function renderLives(){
   $("liveLead").textContent = (liveMode === "top" ? "Classificati per spettatori, in inglese." : "Solo live con la faccia dello streamer: perfette per il formato facecam + gioco.") + liveUpd;
   const shown = lives.map((l,i) => [l,i]).filter(([l]) => liveMode !== "cam" || l.webcam);
   $("lives").innerHTML = shown.length ? shown.map(([l,i]) => `<article class="live${i<3?" podium":""}">
-    <div class="pv" style="background-image:url('${safeUrl(l.anteprima)}')"><span class="tag">LIVE</span><span class="vw big">👁 ${kfmt(+l.spettatori||0)}</span><span class="rank">#${i+1}</span>${l.tuo?`<span class="mine">TUO</span>`:""}<span class="cam ${l.webcam?"":"no"}">${l.webcam?"WEBCAM":"senza webcam"}</span></div>
+    <div class="pv" style="background-image:url('${safeUrl(l.anteprima)}')"><span class="tag">${l.piattaforma === "youtube" ? "LIVE · YouTube" : "LIVE"}</span>${l.spettatori ? `<span class="vw big">👁 ${kfmt(+l.spettatori)}</span>` : ""}<span class="rank">#${i+1}</span>${l.tuo?`<span class="mine">TUO</span>`:""}<span class="cam ${l.webcam?"":"no"}">${l.webcam?"WEBCAM":"senza webcam"}</span></div>
     <div class="b"><div class="who">${l.avatar?`<img src="${safeUrl(l.avatar)}" alt="">`:""}${esc(l.nome)}</div>
       <div class="t">${esc(l.titolo)}</div>
       <div class="chips"><span class="chip" style="background:${STYLES[l.stile]?STYLES[l.stile].c+"26":"#9146ff26"};color:${STYLES[l.stile]?STYLES[l.stile].c:"#cbb3ff"}">${esc(STYLES[l.stile]?STYLES[l.stile].n:"")}</span>${(l.tag||[]).slice(0,3).map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</div>
-      <div style="display:flex;gap:8px"><button class="btn primary sm" style="flex:1" data-clip="${i}">Clippa</button><a class="btn sm" href="https://www.twitch.tv/${encodeURIComponent(l.login)}" target="_blank" rel="noopener">Guarda</a></div>
+      <div style="display:flex;gap:8px"><button class="btn primary sm" style="flex:1" data-clip="${i}">Clippa</button><a class="btn sm" href="${l.url ? safeUrl(l.url) : "https://www.twitch.tv/" + encodeURIComponent(l.login)}" target="_blank" rel="noopener">Guarda</a></div>
     </div></article>`).join("")
     : `<div class="empty" style="grid-column:1/-1">${lives.length ? "Nessuna live con webcam in questo momento. Tocca <b>Top live</b> per vederle tutte." : "La lista arriva al prossimo giro dello Scout."}</div>`;
 }
@@ -447,7 +447,7 @@ async function dispatch(inputs){
 $("goClip").addEventListener("click", async () => {
   if (!pick) return;
   const inputs = pick.virale ? {link:pick.link, stile:pickStyle, facecam:$("cam").value}
-    : {link:`https://www.twitch.tv/${pick.login}`, stile:pickStyle, minuti:String(pickMin), facecam:$("cam").value};
+    : {link:pick.url || `https://www.twitch.tv/${pick.login}`, stile:pickStyle, minuti:String(pickMin), facecam:$("cam").value};
   if (!token){ openIssue(inputs); closeSheets(); toast("Su GitHub tocca Create: gli agenti partono"); setTimeout(poll, 60000); return; }
   const b = $("goClip"); b.disabled = true; b.textContent = "Avvio gli agenti…";
   try{

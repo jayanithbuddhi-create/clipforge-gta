@@ -170,6 +170,9 @@ def parse_link(s):
         re.search(r"twitch\.tv/[A-Za-z0-9_]+/clip/([A-Za-z0-9_-]{4,100})", s)
     if m:
         return "clip", m.group(1), f"https://clips.twitch.tv/{m.group(1)}"
+    m = re.search(r"youtube\.com/@([A-Za-z0-9_.-]{2,40})", s)
+    if m:
+        return "live", m.group(1).lower(), f"https://www.youtube.com/@{m.group(1)}/live"
     m = re.search(r"twitch\.tv/(?:\w+/)?videos?/(\d+)", s)
     if m:
         return "vod", m.group(1), f"https://www.twitch.tv/videos/{m.group(1)}"
@@ -251,9 +254,40 @@ def vod_channel(vid):
         return "streamer"
 
 
+def youtube_live(handle):
+    """IShowSpeed & co. sono su YouTube: streamlink dice se il canale e' in diretta adesso."""
+    url = f"https://www.youtube.com/@{handle.lstrip('@')}/live"
+    try:
+        out = subprocess.run(["streamlink", "--json", url], capture_output=True, text=True, timeout=90).stdout
+        d = json.loads(out or "{}")
+    except Exception as e:
+        log("Scout: YouTube non controllabile ->", e)
+        return None
+    if not d.get("streams"):
+        return None
+    m = d.get("metadata") or {}
+    vid = m.get("id") or ""
+    return {"login": handle.lower().lstrip("@"), "nome": m.get("author") or handle, "titolo": m.get("title") or "",
+            "spettatori": 0, "anteprima": f"https://i.ytimg.com/vi/{vid}/hqdefault_live.jpg" if vid else "",
+            "avatar": "", "gioco": m.get("category") or "", "dal": "", "tag": ["YouTube"], "grande": "",
+            "url": url, "piattaforma": "youtube"}
+
+
+def channel_top_clips(login, period="LAST_WEEK", n=20):
+    """Le clip piu' viste di un canale (per i canali seguiti: niente GTA obbligatorio)."""
+    try:
+        d = gql('query($l:String!,$n:Int){user(login:$l){clips(first:$n, criteria:{period:%s, sort:VIEWS_DESC})'
+                '{edges{node{%s}}}}}' % (period, CLIP_NODE), {"l": login, "n": n})
+        edges = ((((d.get("data") or {}).get("user") or {}).get("clips")) or {}).get("edges") or []
+        return [c for c in (_clip_row(e.get("node") or {}) for e in edges) if c["slug"]]
+    except Exception as e:
+        log("Scout: clip del canale non disponibili ->", e)
+        return []
+
+
 def cam_for(cfg, ch):
     for c in cfg.get("canali", []):
-        if c["nome"].lower() == ch:
+        if ch in (c["nome"].lower(), (c.get("twitch") or "").lower(), (c.get("youtube") or "").lower().lstrip("@")):
             return c.get("facecam", "auto")
     return cfg.get("facecam_default", "auto")
 
@@ -286,17 +320,27 @@ def scout():
     st = {"jobs": [], "clips": [], "inizio": int(time.time())}
     link, style_in, cam_in = env("LINK"), env("STILE"), env("FACECAM")
     minutes = max(1.0, min(30.0, float(env("MINUTI") or cfg.get("minuti", 10))))
-    lives = english_gta_lives(40)
-    log(f"Scout: {len(lives)} live GTA V in inglese adesso")
+    only = bool(cfg.get("solo_canali")) and bool(cfg.get("canali"))     # es. solo IShowSpeed
+    lives = [] if only else english_gta_lives(40)
+    if not only:
+        log(f"Scout: {len(lives)} live GTA V in inglese adesso")
     mine = []
     for c in cfg.get("canali", []):
-        info = channel_live(c["nome"].lower())
-        if info and is_gta(info["gioco"], info["titolo"]):
-            info["tuo"] = True
-            mine.append(info)
-            log(f"  {info['login']}: LIVE su GTA ({info['spettatori']} spettatori)")
+        tw = (c.get("twitch", c["nome"]) or "").lower()
+        info = channel_live(tw) if tw else None
+        if info and (not c.get("solo_gta", True) or is_gta(info["gioco"], info["titolo"])):
+            info.update(url=f"https://www.twitch.tv/{tw}", piattaforma="twitch")
+        elif c.get("youtube"):
+            info = youtube_live(c["youtube"])
         else:
-            log(f"  {c['nome']}: " + ("live ma non su GTA" if info else "offline"))
+            info = None
+        if info:
+            info["tuo"] = True
+            info["nome"] = c.get("nome") or info["nome"]
+            mine.append(info)
+            log(f"  {c['nome']}: IN DIRETTA su {info['piattaforma']} · {info['titolo'][:60]}")
+        else:
+            log(f"  {c['nome']}: offline")
     seen = {m["login"] for m in mine}
     excl = set(x.lower() for x in cfg.get("escludi", []))
     live_list = [l for l in mine + [l for l in lives if l["login"] not in seen] if l["login"] not in excl]
@@ -316,8 +360,13 @@ def scout():
         log("Scout: top 5 per spettatori -> " + ", ".join(f"{l['nome']} ({l['spettatori']})" for l in top[:5]))
 
     # clip virali di oggi: i momenti GTA piu' visti delle ultime 24 ore
-    virali = [c for c in top_gta_clips(40) if c["login"] not in excl and c["views"] >= int(cfg.get("min_views_clip_virale", 1500))
+    if only:
+        pool = [x for c in cfg["canali"] if c.get("twitch") for x in channel_top_clips(c["twitch"].lower())]
+    else:
+        pool = top_gta_clips(40)
+    virali = [c for c in pool if c["login"] not in excl and c["views"] >= int(cfg.get("min_views_clip_virale", 1500))
               and 6 <= (c["durata"] or 30) <= 90]
+    virali.sort(key=lambda c: -c["views"])
     for c in virali[:16]:
         f = webcam_in_preview(c["anteprima"], 0.7)
         c["webcam"] = [round(v, 4) for v in f[:4]] if f else None
@@ -333,6 +382,7 @@ def scout():
             ch = vod_channel(ident) if kind == "vod" else ident
             info = next((l for l in live_list if l["login"] == ch), {})
             st["jobs"].append({"tipo": kind, "url": url, "ch": ch, "nome": info.get("nome") or ch,
+                               "piattaforma": "youtube" if "youtube.com" in url else "twitch",
                                "stile": style_in or info.get("stile") or cfg.get("stile_default", "hype"),
                                "facecam": cam_in or cam_for(cfg, ch), "minuti": minutes,
                                "da": float(os.environ.get("DA") or 0), "titolo": info.get("titolo", ""),
@@ -363,7 +413,8 @@ def scout():
             if l["login"] in recent and not l.get("tuo"):
                 continue
             n_live += 1
-            st["jobs"].append({"tipo": "live", "url": f"https://www.twitch.tv/{l['login']}", "ch": l["login"],
+            st["jobs"].append({"tipo": "live", "url": l.get("url") or f"https://www.twitch.tv/{l['login']}", "ch": l["login"],
+                               "piattaforma": l.get("piattaforma", "twitch"),
                                "nome": l.get("nome") or l["login"], "stile": style_in or l["stile"],
                                "facecam": cam_in or cam_for(cfg, l["login"]), "minuti": minutes, "da": 0,
                                "titolo": l["titolo"], "webcam": l.get("webcam"), "dal": l.get("dal", ""),
@@ -457,7 +508,7 @@ def record():
             cmd += ["--hls-start-offset", str(int(j["da"] * 60))]
         cmd += [j["url"], QUALITY]
         live = j.get("tipo") == "live"
-        chat = ChatLogger(j["ch"]) if live and cfg.get("chat", True) else None
+        chat = ChatLogger(j["ch"]) if live and cfg.get("chat", True) and j.get("piattaforma", "twitch") == "twitch" else None
         if chat:
             chat.start()
         log(f"Hunter: registro {j['ch']} per {j['minuti']:.0f} min" + (" e leggo la chat" if chat else ""))
@@ -484,7 +535,7 @@ def record():
             time.sleep(20)                        # lascia agli spettatori il tempo di pubblicare le ultime clip
             marks = []
             start_live = iso_ts(j.get("dal"))
-            for c in channel_clips(j["ch"], t0 - 120):
+            for c in (channel_clips(j["ch"], t0 - 120) if j.get("piattaforma", "twitch") == "twitch" else []):
                 d = float(c["durata"] or 30)
                 if c.get("offset") is not None and start_live:
                     s0 = start_live + float(c["offset"]) - t0
@@ -1086,7 +1137,7 @@ def finish(base, c, ch, style, split, top, teaser_len, total, words, out_mp4, ou
             f.write(line)
         hook_files.append(hf)
     with open(ch_file, "w") as f:
-        f.write(f"twitch.tv/{ch}")
+        f.write(c.get("credito") or f"twitch.tv/{ch}")
     sub_y = (top + int((OUT_H - top) * 0.6)) if split else 1330
     n_sub = make_ass(words, style, ass_file, sub_y) if words else 0
     nl, lh = len(hook_lines), 66
@@ -1117,6 +1168,10 @@ def caption(c, ch, style_key, title):
     """Dalla ricerca: 1 riga di hook con gioco e tipo di momento, 1 call to action, 5 hashtag pertinenti."""
     style = STYLES[style_key]
     slug = re.sub(r"\W", "", ch.lower())   # ch = nome visualizzato
+    if not is_gta("", title):                 # canale seguito fuori da GTA (es. IShowSpeed in IRL)
+        cta = style["cta"][int(time.time()) % len(style["cta"])]
+        tags = [f"#{slug}", "#speed" if "speed" in slug else "#streamer", "#viral", "#funny", "#fyp"]
+        return f"{c['hook'].strip(chr(34))} {style['emoji']} {ch}\n{cta}\n\n" + " ".join(dict.fromkeys(tags))
     rp = bool(re.search(r"\brp\b|roleplay|nopixel", (title or "").lower())) or style_key in ("funny", "drama")
     moment = {"hype": "reaction", "funny": "RP moment", "action": "getaway", "drama": "RP drama"}[style_key]
     tags = [f"#{slug}", "#gtarp" if rp else "#gta5", "#gta", "#twitchclips", "#fyp"]
@@ -1151,6 +1206,7 @@ def edit():
                 pick = next((h for h in own + rest if h not in used), own[0])
                 c["hook"] = hook if hook and hook not in used else pick
                 used.add(c["hook"])
+                c["credito"] = f"youtube.com/@{j['ch']}" if j.get("piattaforma") == "youtube" else f"twitch.tv/{j['ch']}"
                 n_sub = finish(base, c, j["ch"], style, split, top, teaser_len, total, words, mp4, jpg)
                 os.remove(base)
             except Exception as e:

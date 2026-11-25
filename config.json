@@ -1,9 +1,17 @@
 {
-  "canali": [],
+  "canali": [
+    {
+      "nome": "IShowSpeed",
+      "twitch": "ishowspeed",
+      "youtube": "IShowSpeed",
+      "solo_gta": false,
+      "facecam": "auto"
+    }
+  ],
   "facecam_default": "auto",
   "stile_default": "hype",
-  "scopri_top_gta": true,
-  "solo_con_webcam": true,
+  "scopri_top_gta": false,
+  "solo_con_webcam": false,
   "escludi": [],
   "minuti": 10,
   "clip_per_live": 2,
@@ -16,6 +24,7 @@
   "whisper_model": "base.en",
   "tieni_clip": 40,
   "clip_virali_per_giro": 2,
-  "min_views_clip_virale": 1500,
-  "chat": true
+  "min_views_clip_virale": 500,
+  "chat": true,
+  "solo_canali": true
 }

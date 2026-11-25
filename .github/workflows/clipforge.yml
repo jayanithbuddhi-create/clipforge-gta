@@ -69,7 +69,7 @@ jobs:
           with open(os.environ["GITHUB_ENV"], "a") as f:
               for line in body.splitlines():
                   m = re.match(r"\s*(\w+)\s*:\s*(\S+)\s*$", line)
-                  if m and m.group(1).lower() in keys and re.fullmatch(r"[A-Za-z0-9_:/.\-]{1,120}", m.group(2)):
+                  if m and m.group(1).lower() in keys and re.fullmatch(r"[A-Za-z0-9_:/.@\-]{1,120}", m.group(2)):
                       f.write(f"{keys[m.group(1).lower()]}={m.group(2)}\n")
           PY
           gh issue comment ${{ github.event.issue.number }} --body "Ricevuto: gli agenti sono partiti. Le clip arrivano nella galleria tra circa 15 minuti." -R ${{ github.repository }} || true

@@ -1,6 +1,8 @@
 # ClipForge GTA
 
-4 agenti gratuiti su GitHub Actions che trasformano GTA su Twitch in clip verticali 9:16.
+4 agenti gratuiti su GitHub Actions che trasformano le live in clip verticali 9:16.
+
+**Modalità attuale: solo IShowSpeed** (`"solo_canali": true` in `config.json`). Gli agenti controllano Twitch e YouTube ogni 20 minuti e clippano Speed quando è in diretta, qualsiasi gioco o IRL (`"solo_gta": false`). Per tornare alle top live GTA: `"solo_canali": false`, `"scopri_top_gta": true`.
 
 - **Scout**: ogni 20 minuti fa la classifica dei **top streamer GTA in live** (per spettatori) e prende le **clip GTA più viste delle ultime 24 ore**.
 - **Hunter**: scarica le clip virali e registra la live più seguita **leggendo anche la chat** (picchi di messaggi, KEKW, LMAO, "CLIP IT") e le clip create dagli spettatori durante la registrazione.
