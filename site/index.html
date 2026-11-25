@@ -61,7 +61,12 @@ h2{font:400 24px/1.1 Anton,Impact,sans-serif;margin:0 0 4px}
 .live .pv .cam{position:absolute;right:8px;bottom:8px;font:800 11px Inter;border-radius:6px;padding:3px 7px;background:#35d48f;color:#06140d}
 .live .pv .cam.no{background:#000b;color:#9a93ad}
 .warn{background:#ff3b5c1f;color:#ffb3c0;border-radius:12px;padding:10px 12px;font-size:13px;margin:6px 0 0}
-.live .pv .mine{position:absolute;right:8px;top:8px;font:800 11px Inter;background:var(--gold);color:#140f00;border-radius:6px;padding:3px 7px}
+.live .pv .rank{position:absolute;right:8px;top:8px;font:400 20px/1 Anton,sans-serif;background:#000c;color:#fff;border-radius:8px;padding:5px 9px}
+.live.podium{border-color:var(--gold)}.live.podium .pv .rank{background:var(--gold);color:#140f00}
+.live .pv .vw.big{font:400 18px/1 Anton,sans-serif;padding:6px 9px}
+.why{font-size:12px;color:#ffd98a;background:#ffb21a14;border-radius:8px;padding:5px 8px;line-height:1.35}
+.topline{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.live .pv .mine{position:absolute;right:8px;top:40px;font:800 11px Inter;background:var(--gold);color:#140f00;border-radius:6px;padding:3px 7px}
 .live .b{padding:10px 12px 12px;display:flex;flex-direction:column;gap:8px}
 .live .who{display:flex;align-items:center;gap:8px;font-weight:700}.live .who img{width:28px;height:28px;border-radius:50%;background:var(--panel2)}
 .live .t{font-size:13px;color:var(--muted);line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -138,9 +143,9 @@ details summary{cursor:pointer;font-size:13px;color:var(--muted)}.cap{white-spac
       <h2>La squadra al lavoro</h2>
       <p class="lead" id="teamLead">Ogni 20 minuti la catena riparte da sola.</p>
       <div class="chain">
-        <div class="agent" id="ag-scout" style="--c:var(--scout)"><div class="ic"><svg><use href="#i-scout"/></svg></div><b>Scout</b><small id="st-scout">Trova live GTA in inglese</small></div>
-        <div class="agent" id="ag-hunter" style="--c:var(--hunter)"><div class="ic"><svg><use href="#i-hunter"/></svg></div><b>Hunter</b><small id="st-hunter">Registra e misura l'hype</small></div>
-        <div class="agent" id="ag-judge" style="--c:var(--judge)"><div class="ic"><svg><use href="#i-judge"/></svg></div><b>Judge</b><small id="st-judge">Vota e sceglie le clip</small></div>
+        <div class="agent" id="ag-scout" style="--c:var(--scout)"><div class="ic"><svg><use href="#i-scout"/></svg></div><b>Scout</b><small id="st-scout">Top streamer e clip virali</small></div>
+        <div class="agent" id="ag-hunter" style="--c:var(--hunter)"><div class="ic"><svg><use href="#i-hunter"/></svg></div><b>Hunter</b><small id="st-hunter">Registra, legge la chat</small></div>
+        <div class="agent" id="ag-judge" style="--c:var(--judge)"><div class="ic"><svg><use href="#i-judge"/></svg></div><b>Judge</b><small id="st-judge">Scarta le scene piatte</small></div>
         <div class="agent" id="ag-editor" style="--c:var(--editor)"><div class="ic"><svg><use href="#i-editor"/></svg></div><b>Editor</b><small id="st-editor">Monta, zoom, sottotitoli</small></div>
       </div>
       <div class="runline"><b id="runTitle"><span class="dot"></span>Collegamento…</b><small id="runTime"></small></div>
@@ -151,7 +156,7 @@ details summary{cursor:pointer;font-size:13px;color:var(--muted)}.cap{white-spac
       <h2 id="hypeTitle">Radar dell'hype</h2>
       <p class="lead" id="hypeLead">Come l'Hunter ha letto l'ultima live, secondo per secondo.</p>
       <div class="fig" id="hypeFig"><svg id="hypeSvg" role="img" aria-label="Andamento dell'hype nell'ultima live analizzata"></svg></div>
-      <div class="legend"><span style="--c:var(--gold)">hype</span><span style="--c:var(--hunter)">urla e reazioni</span><span style="--c:var(--scout)">azione nel gioco</span><span style="--c:#ffb21a55">clip scelte · ▲ micro zoom</span></div>
+      <div class="legend"><span style="--c:var(--gold)">hype</span><span style="--c:var(--hunter)">urla e reazioni</span><span style="--c:var(--scout)">azione nel gioco</span><span style="--c:var(--ok)">chat</span><span style="--c:#ffb21a55">clip scelte</span><span style="--c:#5a5470">scartate dal Judge</span><span style="--c:#fff">▲ zoom · ● clip spettatori</span></div>
       <div class="stats" id="stats"></div>
     </section>
   </div>
@@ -159,10 +164,11 @@ details summary{cursor:pointer;font-size:13px;color:var(--muted)}.cap{white-spac
   <!-- LIVE -->
   <div class="view" id="v-live">
     <div class="bar" style="justify-content:space-between">
-      <div><h2 style="margin:0">Live GTA adesso</h2><p class="lead" style="margin:2px 0 0" id="liveLead">Streamer in inglese, i più seguiti in alto.</p></div>
+      <div><h2 style="margin:0" id="liveH">Top streamer GTA in live</h2><p class="lead" style="margin:2px 0 0" id="liveLead">Streamer in inglese, classificati per spettatori.</p></div>
       <button class="btn sm" id="refreshLive">Aggiorna</button>
     </div>
-    <div class="seg" id="camFilter" style="margin-bottom:12px"><button data-f="cam">Con webcam</button><button data-f="all">Tutte</button></div>
+    <div class="seg" id="camFilter" style="margin-bottom:12px"><button data-f="top">🏆 Top live</button><button data-f="cam">Webcam</button><button data-f="vir">🔥 Virali oggi</button></div>
+    <div class="topline" id="topline"></div>
     <div class="lives" id="lives"></div>
   </div>
 
@@ -189,9 +195,10 @@ details summary{cursor:pointer;font-size:13px;color:var(--muted)}.cap{white-spac
   <h3 id="scTitle">Vuoi clippare questa live?</h3>
   <p class="lead" id="scSub"></p>
   <p class="warn hidden" id="scWarn">Questa live non ha la webcam: la clip sarà solo gioco, a tutto schermo.</p>
+  <p class="why hidden" id="scVir">Clip già scelta dal pubblico di Twitch: l'Editor la rimonta in 9:16 con facecam, zoom e sottotitoli.</p>
   <div class="lbl">In che stile?</div>
   <div class="styles" id="styles"></div>
-  <div class="lbl">Quanto registrare</div>
+  <div class="lbl" id="minsLbl">Quanto registrare</div>
   <div class="seg" id="mins"><button data-m="5">5 min</button><button data-m="10" class="on">10 min</button><button data-m="15">15 min</button><button data-m="20">20 min</button></div>
   <div class="lbl">Facecam</div>
   <select id="cam"><option value="auto">Automatica (la trova l'Hunter)</option><option value="br">In basso a destra</option><option value="bl">In basso a sinistra</option><option value="tr">In alto a destra</option><option value="tl">In alto a sinistra</option><option value="none">Nessuna facecam</option></select>
@@ -238,7 +245,7 @@ const host = location.hostname, OWNER = host.endsWith(".github.io") ? host.split
 const REPO = location.pathname.split("/").filter(Boolean)[0] || "clipforge-gta";
 const API = `https://api.github.com/repos/${OWNER}/${REPO}`;
 let token = store.get("pat", "");
-let clips = [], lives = [], status = {}, sortBy = store.get("sort","new"), filterCh = "", seen = store.get("seen", 0), seenLive = store.get("seenLive", 0);
+let clips = [], lives = [], virali = [], status = {}, sortBy = store.get("sort","new"), filterCh = "", seen = store.get("seen", 0), seenLive = store.get("seenLive", 0);
 
 /* ---------- schede ---------- */
 function showView(v){
@@ -255,8 +262,8 @@ $("tabbar").addEventListener("click", e => { const b = e.target.closest("button"
 async function getJSON(p){ try{ return await (await fetch(p + "?t=" + Date.now())).json(); }catch(e){ return null; } }
 async function load(){
   const [c, l, s] = await Promise.all([getJSON("clips.json"), getJSON("live.json"), getJSON("status.json")]);
-  clips = Array.isArray(c) ? c : []; lives = (l && l.live) || []; status = s || {};
-  $("liveLead").textContent = l && l.aggiornato ? `Streamer in inglese · aggiornato ${ago(l.aggiornato)}` : "Streamer in inglese, i più seguiti in alto.";
+  clips = Array.isArray(c) ? c : []; lives = ((l && l.live) || []).slice().sort((a,b) => (b.spettatori||0) - (a.spettatori||0)); virali = (l && l.virali) || []; status = s || {};
+  liveUpd = l && l.aggiornato ? ` · aggiornato ${ago(l.aggiornato)}` : "";
   const chs = [...new Set(clips.map(x => x.ch))];
   $("filter").innerHTML = `<option value="">Tutti gli streamer</option>` + chs.map(x => `<option value="${esc(x)}" ${x===filterCh?"selected":""}>@${esc(x)}</option>`).join("");
   const fresh = clips.filter(x => x.created > seen).length;
@@ -267,7 +274,7 @@ async function load(){
 /* ---------- catena degli agenti in tempo reale (API di GitHub) ---------- */
 const STEP_AGENT = [["Scout","scout"],["Hunter · registra","hunter"],["Hunter · analizza","judge"],["Judge + Editor","editor"],["Pubblica","editor"]];
 const AG = ["scout","hunter","judge","editor"];
-const IDLE = {scout:"Trova live GTA in inglese", hunter:"Registra e misura l'hype", judge:"Vota e sceglie le clip", editor:"Monta, zoom, sottotitoli"};
+const IDLE = {scout:"Top streamer e clip virali", hunter:"Registra, legge la chat", judge:"Scarta le scene piatte", editor:"Monta, zoom, sottotitoli"};
 function setAgents(active, done, notes){
   AG.forEach(a => { const el = $("ag-"+a); el.classList.toggle("run", a === active); el.classList.toggle("done", done.includes(a) && a !== active);
     $("st-"+a).textContent = (notes && notes[a]) || IDLE[a]; });
@@ -297,13 +304,14 @@ async function poll(){
       }
       if (done.includes("judge") && !done.includes("hunter")) done.push("hunter");
       const lav = (status.lavori || [])[0];
-      if (lav){ notes.scout = `Trovato ${lav.ch}`; }
+      if (lav){ notes.scout = (status.lavori||[]).map(x => x.ch).slice(0,3).join(", "); }
       if (active === "hunter" && cur && lav){
-        const el = (Date.now() - Date.parse(cur.started_at))/1000, tot = lav.minuti*60;
-        notes.hunter = `Registra ${lav.ch} · ${mmss(Math.min(el,tot))}/${mmss(tot)}`;
-        $("runBar").style.width = Math.round(25 + 40*Math.min(1, el/tot)) + "%";
+        const liveJob = (status.lavori||[]).find(x => x.tipo !== "clip") || lav;
+        const el = (Date.now() - Date.parse(cur.started_at))/1000, tot = (liveJob.tipo === "clip" ? 0 : liveJob.minuti)*60;
+        notes.hunter = tot ? `Registra ${lav.ch} + chat · ${mmss(Math.min(el,tot))}/${mmss(tot)}` : "Scarica le clip virali";
+        $("runBar").style.width = Math.round(25 + 40*Math.min(1, tot ? el/tot : .5)) + "%";
       } else $("runBar").style.width = ({scout:12, hunter:30, judge:70, editor:88}[active] || 5) + "%";
-      if (active === "judge") notes.judge = "Analizza hype, facecam e picchi";
+      if (active === "judge") notes.judge = "Ascolta, legge la chat, vota";
       if (active === "editor") notes.editor = "Monta: zoom e sottotitoli";
       setAgents(active, done, notes);
       $("runTitle").innerHTML = `<span class="dot run"></span>${run.status === "queued" ? "In coda" : "Al lavoro"}${lav ? " su " + esc(lav.ch) : ""}`;
@@ -332,17 +340,23 @@ function drawHype(){
   const a = status.analisi, svg = $("hypeSvg");
   if (!a || !a.hype || !a.hype.length){ svg.innerHTML = ""; $("hypeLead").textContent = "Il grafico compare dopo la prima live analizzata."; return; }
   $("hypeTitle").textContent = `Radar dell'hype · ${a.ch}`;
-  $("hypeLead").textContent = `${mmss(a.durata)} di live in stile ${STYLES[a.stile] ? STYLES[a.stile].n : a.stile} · ${a.candidati} momenti candidati, ${a.scelte.length} scelti` + (a.facecam ? " · facecam trovata" : "");
+  const sc = a.scelte.length, sk = (a.scartate||[]).length;
+  $("hypeLead").textContent = `${mmss(a.durata)} di live · ${a.candidati} momenti ascoltati, ${sc} sopra ${a.soglia||60}/100` + (sk ? `, ${sk} scartati perché piatti` : "") + (a.chat && a.chat.length ? " · chat letta" : "") + (a.facecam ? " · facecam trovata" : "")
+    + (sc ? "" : " · nessuna clip: non è successo niente di forte");
   const W = svg.clientWidth, H = svg.clientHeight; if (!W) return;
   const n = a.hype.length, mx = Math.max(1, ...a.hype), pad = 18;
   const x = i => i/(n-1||1)*W, xs = t => t/(a.passo*(n-1)||1)*W, y = v => H - pad - Math.min(v,mx)/mx*(H - pad - 16);
   const path = arr => arr.map((v,i) => `${i?"L":"M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
   let s = "";
+  (a.scartate||[]).forEach(c => { s += `<rect x="${xs(c.start).toFixed(1)}" y="0" width="${Math.max(3,xs(c.end)-xs(c.start)).toFixed(1)}" height="${H-pad}" fill="#5a547033" rx="4"/>`
+    + `<text x="${(xs(c.start)+4).toFixed(1)}" y="13" fill="#7a7390" font-size="11" font-family="Inter">${+c.viral}</text>`; });
+  (a.spettatori||[]).forEach(t => { s += `<circle cx="${xs(Math.max(0,t)).toFixed(1)}" cy="${H-pad-4}" r="4" fill="#35d48f" stroke="#0d0b14" stroke-width="1.5"/>`; });
   a.scelte.forEach((c,k) => { s += `<rect x="${xs(c.start).toFixed(1)}" y="0" width="${Math.max(3,xs(c.end)-xs(c.start)).toFixed(1)}" height="${H-pad}" fill="#ffb21a22" rx="4"/>`
     + `<text x="${(xs(c.start)+4).toFixed(1)}" y="13" fill="#ffb21a" font-size="12" font-weight="800" font-family="Inter">${+c.viral}</text>`
     + (c.zoom||[]).map(t => `<path d="M${xs(t).toFixed(1)},${H-pad-2}l-5,-8h10z" fill="#fff"/>`).join(""); });
   s += `<path d="${path(a.azione)}" fill="none" stroke="#4fc3ff" stroke-opacity=".7" stroke-width="1.2"/>`;
   s += `<path d="${path(a.urla)}" fill="none" stroke="#ff5c7a" stroke-opacity=".7" stroke-width="1.2"/>`;
+  if (a.chat && a.chat.length) s += `<path d="${path(a.chat)}" fill="none" stroke="#35d48f" stroke-opacity=".8" stroke-width="1.4"/>`;
   s += `<path d="${path(a.hype)}L${W},${H-pad}L0,${H-pad}Z" fill="url(#hg)"/><path d="${path(a.hype)}" fill="none" stroke="#ffb21a" stroke-width="2.2"/>`;
   s = `<defs><linearGradient id="hg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb21a" stop-opacity=".35"/><stop offset="1" stop-color="#ffb21a" stop-opacity="0"/></linearGradient></defs>` + s;
   s += `<text x="0" y="${H-2}" fill="#9a93ad" font-size="12" font-family="Inter">0:00</text><text x="${W}" y="${H-2}" fill="#9a93ad" font-size="12" font-family="Inter" text-anchor="end">${mmss(a.durata)}</text>`;
@@ -355,24 +369,45 @@ function renderStats(){
   $("stats").innerHTML = [[clips.length,"clip pronte"],[day,"ultime 24 ore"],[avg||"–","voto medio"]].map(([v,l]) => `<div class="stat"><b>${esc(v)}</b><small>${l}</small></div>`).join("");
 }
 
-/* ---------- live adesso ---------- */
+/* ---------- live adesso: top streamer, webcam, clip virali ---------- */
+let liveUpd = "";
+let pick = null, pickStyle = "hype", pickMin = 10, liveMode = store.get("liveMode", "top");
+if (!["top","cam","vir"].includes(liveMode)) liveMode = "top";
+const dur = s => `${Math.round(+s||0)} s`;
 function renderLives(){
   const fresh = lives.length && seenLive < (Date.now()/1000 - 3600);
   $("liveBadge").textContent = lives.length; $("liveBadge").classList.toggle("hidden", !fresh);
-  const shown = lives.map((l,i) => [l,i]).filter(([l]) => !camOnly || l.webcam);
-  $("lives").innerHTML = shown.length ? shown.map(([l,i]) => `<article class="live">
-    <div class="pv" style="background-image:url('${safeUrl(l.anteprima)}')"><span class="tag">LIVE</span><span class="vw">👁 ${kfmt(+l.spettatori||0)}</span>${l.tuo?`<span class="mine">TUO</span>`:""}<span class="cam ${l.webcam?"":"no"}">${l.webcam?"WEBCAM":"senza webcam"}</span></div>
+  [...$("camFilter").children].forEach(b => b.classList.toggle("on", b.dataset.f === liveMode));
+  const tot = lives.reduce((n,l) => n + (+l.spettatori||0), 0);
+  $("topline").classList.toggle("hidden", liveMode === "vir");
+  $("topline").innerHTML = [[lives.length,"live GTA in inglese"],[kfmt(tot),"spettatori totali"],[lives[0] ? kfmt(+lives[0].spettatori||0) : "–", lives[0] ? "#1 " + lives[0].nome : "il primo"]]
+    .map(([v,l]) => `<div class="stat"><b>${esc(v)}</b><small>${esc(l)}</small></div>`).join("");
+  if (liveMode === "vir"){
+    $("liveH").textContent = "Clip GTA virali di oggi";
+    $("liveLead").textContent = "I momenti più visti delle ultime 24 ore: il pubblico ha già scelto le scene forti." + liveUpd;
+    const done = new Set(clips.map(c => c.slug).filter(Boolean));
+    $("lives").innerHTML = virali.length ? virali.map((v,i) => `<article class="live${i<3?" podium":""}">
+      <div class="pv" style="background-image:url('${safeUrl(v.anteprima)}')"><span class="tag" style="background:var(--gold);color:#140f00">🔥 VIRALE</span><span class="vw big">${kfmt(+v.views||0)} views</span><span class="rank">#${i+1}</span><span class="cam ${v.webcam?"":"no"}">${v.webcam?"WEBCAM":dur(v.durata)}</span></div>
+      <div class="b"><div class="who">${v.avatar?`<img src="${safeUrl(v.avatar)}" alt="">`:""}${esc(v.nome)}<small style="color:var(--muted);font-weight:500;margin-left:auto">${v.creata?ago(v.creata):""}</small></div>
+        <div class="t">${esc(v.titolo)}</div>
+        <div style="display:flex;gap:8px">${done.has(v.slug) ? `<button class="btn sm" style="flex:1" disabled>Già nella galleria ✓</button>` : `<button class="btn primary sm" style="flex:1" data-vir="${i}">Rifai in 9:16</button>`}<a class="btn sm" href="https://clips.twitch.tv/${encodeURIComponent(v.slug)}" target="_blank" rel="noopener">Guarda</a></div>
+      </div></article>`).join("")
+      : `<div class="empty" style="grid-column:1/-1">Le clip virali arrivano al prossimo giro dello Scout.</div>`;
+    return;
+  }
+  $("liveH").textContent = liveMode === "top" ? "Top streamer GTA in live" : "Live GTA con webcam";
+  $("liveLead").textContent = (liveMode === "top" ? "Classificati per spettatori, in inglese." : "Solo live con la faccia dello streamer: perfette per il formato facecam + gioco.") + liveUpd;
+  const shown = lives.map((l,i) => [l,i]).filter(([l]) => liveMode !== "cam" || l.webcam);
+  $("lives").innerHTML = shown.length ? shown.map(([l,i]) => `<article class="live${i<3?" podium":""}">
+    <div class="pv" style="background-image:url('${safeUrl(l.anteprima)}')"><span class="tag">LIVE</span><span class="vw big">👁 ${kfmt(+l.spettatori||0)}</span><span class="rank">#${i+1}</span>${l.tuo?`<span class="mine">TUO</span>`:""}<span class="cam ${l.webcam?"":"no"}">${l.webcam?"WEBCAM":"senza webcam"}</span></div>
     <div class="b"><div class="who">${l.avatar?`<img src="${safeUrl(l.avatar)}" alt="">`:""}${esc(l.nome)}</div>
       <div class="t">${esc(l.titolo)}</div>
       <div class="chips"><span class="chip" style="background:${STYLES[l.stile]?STYLES[l.stile].c+"26":"#9146ff26"};color:${STYLES[l.stile]?STYLES[l.stile].c:"#cbb3ff"}">${esc(STYLES[l.stile]?STYLES[l.stile].n:"")}</span>${(l.tag||[]).slice(0,3).map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</div>
       <div style="display:flex;gap:8px"><button class="btn primary sm" style="flex:1" data-clip="${i}">Clippa</button><a class="btn sm" href="https://www.twitch.tv/${encodeURIComponent(l.login)}" target="_blank" rel="noopener">Guarda</a></div>
     </div></article>`).join("")
-    : `<div class="empty" style="grid-column:1/-1">${lives.length ? "Nessuna live con webcam in questo momento. Tocca <b>Tutte</b> per vederle tutte." : "La lista arriva al prossimo giro dello Scout."}</div>`;
+    : `<div class="empty" style="grid-column:1/-1">${lives.length ? "Nessuna live con webcam in questo momento. Tocca <b>Top live</b> per vederle tutte." : "La lista arriva al prossimo giro dello Scout."}</div>`;
 }
-let pick = null, pickStyle = "hype", pickMin = 10, camOnly = store.get("camOnly", true);
-[...$("camFilter").children].forEach(b => b.classList.toggle("on", (b.dataset.f === "cam") === camOnly));
-$("camFilter").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; camOnly = b.dataset.f === "cam"; store.set("camOnly", camOnly);
-  [...$("camFilter").children].forEach(x => x.classList.toggle("on", x === b)); renderLives(); });
+$("camFilter").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; liveMode = b.dataset.f; store.set("liveMode", liveMode); renderLives(); });
 $("styles").innerHTML = Object.entries(STYLES).map(([k,s]) => `<button class="style" data-s="${k}" style="--sc:${s.c}"><b><i></i>${s.n}</b><small>${s.d}</small></button>`).join("");
 function openSheet(id){ $("sheetBg").classList.add("on"); $(id).classList.add("on"); }
 function closeSheets(){ $("sheetBg").classList.remove("on"); document.querySelectorAll(".sheet").forEach(s => s.classList.remove("on")); }
@@ -381,12 +416,21 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") closeSheets(
 function setStyle(k){ pickStyle = k; [...$("styles").children].forEach(b => b.classList.toggle("on", b.dataset.s === k)); }
 $("styles").addEventListener("click", e => { const b = e.target.closest(".style"); if (b) setStyle(b.dataset.s); });
 $("mins").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; pickMin = +b.dataset.m; [...$("mins").children].forEach(x => x.classList.toggle("on", x === b)); });
-$("lives").addEventListener("click", e => { const b = e.target.closest("[data-clip]"); if (!b) return;
+function viralSheet(on){ ["mins","minsLbl"].forEach(id => $(id).classList.toggle("hidden", on)); $("scVir").classList.toggle("hidden", !on);
+  $("goClip").textContent = on ? "Sì, rifai questa clip" : "Sì, clippa questa live"; }
+$("lives").addEventListener("click", e => {
+  const v = e.target.closest("[data-vir]");
+  if (v){ const c = virali[+v.dataset.vir];
+    pick = {nome:c.nome, login:c.login, link:`https://clips.twitch.tv/${c.slug}`, virale:true};
+    $("scTitle").textContent = `Rifare la clip di ${c.nome} in 9:16?`;
+    $("scSub").textContent = `${kfmt(+c.views||0)} views · ${c.titolo}`.slice(0, 140);
+    setStyle(c.stile || "hype"); $("cam").value = "auto"; $("scWarn").classList.add("hidden"); viralSheet(true); openSheet("sheetClip"); return; }
+  const b = e.target.closest("[data-clip]"); if (!b) return;
   pick = lives[+b.dataset.clip]; $("scTitle").textContent = `Vuoi clippare la live di ${pick.nome}?`;
-  $("scSub").textContent = `${kfmt(+pick.spettatori||0)} spettatori · ${pick.titolo}`.slice(0, 140);
-  setStyle(pick.stile || "hype"); $("cam").value = pick.webcam ? "auto" : "none"; $("scWarn").classList.toggle("hidden", !!pick.webcam); openSheet("sheetClip"); });
+  $("scSub").textContent = `#${+b.dataset.clip+1} · ${kfmt(+pick.spettatori||0)} spettatori · ${pick.titolo}`.slice(0, 140);
+  setStyle(pick.stile || "hype"); $("cam").value = pick.webcam ? "auto" : "none"; $("scWarn").classList.toggle("hidden", !!pick.webcam); viralSheet(false); openSheet("sheetClip"); });
 function issueUrl(inputs){
-  const title = inputs.solo_scout ? "ClipForge: aggiorna live" : `ClipForge: clippa ${inputs.link.split("/").pop()}`;
+  const title = inputs.solo_scout ? "ClipForge: aggiorna live" : `ClipForge: clippa ${inputs.link.split("/").pop().slice(0,60)}`;
   const body = Object.entries(inputs).map(([k,v]) => `${k}: ${v}`).join("\n") + "\n\n(Tocca Create / Submit: gli agenti partono da soli)";
   return `https://github.com/${OWNER}/${REPO}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
 }
@@ -402,14 +446,15 @@ async function dispatch(inputs){
 }
 $("goClip").addEventListener("click", async () => {
   if (!pick) return;
-  const inputs = {link:`https://www.twitch.tv/${pick.login}`, stile:pickStyle, minuti:String(pickMin), facecam:$("cam").value};
+  const inputs = pick.virale ? {link:pick.link, stile:pickStyle, facecam:$("cam").value}
+    : {link:`https://www.twitch.tv/${pick.login}`, stile:pickStyle, minuti:String(pickMin), facecam:$("cam").value};
   if (!token){ openIssue(inputs); closeSheets(); toast("Su GitHub tocca Create: gli agenti partono"); setTimeout(poll, 60000); return; }
   const b = $("goClip"); b.disabled = true; b.textContent = "Avvio gli agenti…";
   try{
     await dispatch(inputs);
-    closeSheets(); toast(`Agenti partiti su ${pick.nome}: clip in circa ${pickMin + 6} min`); showView("agenti"); setTimeout(poll, 4000);
+    closeSheets(); toast(`Agenti partiti su ${pick.nome}: clip in circa ${pick.virale ? 6 : pickMin + 6} min`); showView("agenti"); setTimeout(poll, 4000);
   }catch(err){ toast(err.message === "chiave" ? "La chiave non è valida: ricollegala" : "Avvio non riuscito, riprova"); if (err.message === "chiave") openSheet("sheetSet"); }
-  b.disabled = false; b.textContent = "Sì, clippa questa live";
+  b.disabled = false; b.textContent = pick && pick.virale ? "Sì, rifai questa clip" : "Sì, clippa questa live";
 });
 $("refreshLive").addEventListener("click", async () => {
   if (!token){ openIssue({solo_scout:"1"}); toast("Su GitHub tocca Create: lo Scout aggiorna la lista"); return; }
@@ -439,7 +484,8 @@ function renderClips(){
     <div class="top"><video src="${esc(c.file)}" poster="${esc(c.poster)}" controls playsinline preload="none"></video>${ring(c.viral)}${c.created > seen ? `<span class="new">NUOVA</span>` : ""}</div>
     <div class="b"><div class="meta"><span>@${esc(c.ch)}</span><span>${ago(c.created)}</span></div>
       <div class="h">${esc(c.hook)}</div>
-      <div class="feat">${c.stile && STYLES[c.stile] ? `<span style="color:${STYLES[c.stile].c}">${STYLES[c.stile].n}</span>` : ""}${c.sottotitoli?"<span>sottotitoli</span>":""}${c.zoom?`<span>${+c.zoom} zoom</span>`:""}${c.durata?`<span>${Math.round(c.durata)} s</span>`:""}</div>
+      ${c.perche ? `<div class="why">Perché: ${esc(c.perche)}</div>` : ""}
+      <div class="feat">${c.fonte === "virale" ? `<span style="color:var(--gold)">🔥 virale${c.views?" · "+kfmt(+c.views)+" views":""}</span>` : ""}${c.stile && STYLES[c.stile] ? `<span style="color:${STYLES[c.stile].c}">${STYLES[c.stile].n}</span>` : ""}${c.sottotitoli?"<span>sottotitoli</span>":""}${c.zoom?`<span>${+c.zoom} zoom</span>`:""}${c.durata?`<span>${Math.round(c.durata)} s</span>`:""}</div>
       ${c.subs ? `<div class="subs">${Object.entries(c.subs).map(([k,v]) => `<div class="s">${esc(k)} ${+v}<div><i style="width:${+v}%"></i></div></div>`).join("")}</div>` : ""}
       <button class="btn primary sm" data-share="${esc(c.id)}">Condividi</button>
       <button class="btn sm" data-copy="${esc(c.id)}">Copia caption</button>

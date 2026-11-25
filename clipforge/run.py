@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""ClipForge GTA v2 - 4 agenti gratuiti su GitHub Actions.
+"""ClipForge GTA v3 - 4 agenti gratuiti su GitHub Actions.
 
-  Scout  - trova le live GTA V in inglese (lista tua + le piu' seguite) e le pubblica nella sezione "Live ora"
-  Hunter - registra la live, trova la facecam da solo e misura l'hype secondo per secondo (urla + azione)
-  Judge  - vota la viralita' 0-100, sceglie le clip (apertura sul picco, fine dopo il payoff)
+  Scout  - classifica dei top streamer GTA in live (per spettatori) + le clip GTA piu' viste delle ultime 24 ore
+  Hunter - scarica le clip virali, registra la live leggendo anche la CHAT e le clip fatte dagli spettatori,
+           trova la facecam e misura l'hype secondo per secondo (urla + azione + chat)
+  Judge  - voto ASSOLUTO 0-100 (non relativo alla live): scarta tempi morti, menu e caricamenti,
+           ascolta cosa viene detto (Whisper) e non pubblica niente se non e' successo niente
   Editor - 9:16 con facecam sopra e gioco sotto, micro zoom sui picchi, sottotitoli animati parola
            per parola (Whisper), titolo piccolo in inglese, teaser iniziale, credito allo streamer
 
 Uso:  python clipforge/run.py scout|record|analyze|edit|publish   (un passo per agente nel workflow)
       TEST_FILE=video.mp4 python clipforge/run.py all              (prova locale)
 """
-import json, math, os, re, shutil, subprocess, sys, time, urllib.request
+import json, math, os, random, re, shutil, socket, subprocess, sys, threading, time, urllib.request
 from datetime import datetime, timezone
 
 import numpy as np
@@ -35,28 +37,32 @@ STYLES = {
                                 "{n}'s reaction says everything"],
                        "audio": ["{n} completely lost it", "{n} could not believe it", "{n} screamed so loud here"],
                        "scene": ["{n} did not see this coming", "Wait for {n}'s reaction"],
-                       "weak": ["Wait for {n}'s reaction"]},
+                       "weak": ["Wait for {n}'s reaction"],
+                       "chat": ["Chat went crazy when {n} did this", "{n}'s chat could not believe this", "Twitch chat lost it here"]},
              "cta": ["Would you have stayed calm? 👇", "Rate this reaction 1-10 👇"], "emoji": "😭"},
     "funny": {"nome": "Funny RP", "colore": "&H0091FF4D", "w_audio": 1.5, "w_scene": 0.4, "durata": 30, "dopo": 5,
               "zoom": 0.10, "shake": 0,
               "hooks": {"both": ["This RP scene went so wrong", "{n} had no idea what was coming", "Nobody in the city expected this"],
                         "audio": ["{n} said this with a straight face", "The way {n} said this", "{n} cannot be serious"],
                         "scene": ["{n} really thought this would work", "This plan was doomed from the start"],
-                        "weak": ["{n} really thought this would work"]},
+                        "weak": ["{n} really thought this would work"],
+                        "chat": ["Chat could not stop laughing at this", "{n}'s chat lost it at this RP scene"]},
               "cta": ["Tag someone who would do this 💀", "Who's the funniest in the city? 👇"], "emoji": "💀"},
     "action": {"nome": "Inseguimenti & azione", "colore": "&H005C3BFF", "w_audio": 1.1, "w_scene": 1.0, "durata": 25, "dopo": 4,
                "zoom": 0.16, "shake": 9,
                "hooks": {"both": ["{n}'s getaway went way too far", "The cops did not expect this", "Best escape in GTA RP?"],
                          "audio": ["{n} almost got caught here", "This chase got intense"],
                          "scene": ["Watch this getaway till the end", "This crash was not in the plan", "{n} pulled this off??"],
-                         "weak": ["Watch this getaway till the end"]},
+                         "weak": ["Watch this getaway till the end"],
+                         "chat": ["Chat went insane during this chase", "{n}'s chat could not believe this escape"]},
                "cta": ["Would you have escaped? 👇", "Cops or robbers? 👇"], "emoji": "🚔"},
     "drama": {"nome": "Drama RP", "colore": "&H00FF8CB4", "w_audio": 1.7, "w_scene": 0.3, "durata": 45, "dopo": 6,
               "zoom": 0.08, "shake": 0,
               "hooks": {"both": ["This argument got out of hand", "{n} finally snapped", "This RP drama was insane"],
                         "audio": ["{n} said what everyone was thinking", "This conversation got heated", "{n} did not hold back"],
                         "scene": ["This is how it all ended", "{n} made the wrong call"],
-                        "weak": ["{n} made the wrong call"]},
+                        "weak": ["{n} made the wrong call"],
+                        "chat": ["Chat was shook after this", "{n}'s chat picked a side instantly"]},
               "cta": ["Who was right here? 👇", "Whose side are you on? 👇"], "emoji": "😳"},
 }
 
@@ -160,6 +166,10 @@ def auto_style(title, tags):
 
 def parse_link(s):
     s = s.strip()
+    m = re.search(r"clips\.twitch\.tv/(?:embed\?clip=)?([A-Za-z0-9_-]{4,100})", s) or \
+        re.search(r"twitch\.tv/[A-Za-z0-9_]+/clip/([A-Za-z0-9_-]{4,100})", s)
+    if m:
+        return "clip", m.group(1), f"https://clips.twitch.tv/{m.group(1)}"
     m = re.search(r"twitch\.tv/(?:\w+/)?videos?/(\d+)", s)
     if m:
         return "vod", m.group(1), f"https://www.twitch.tv/videos/{m.group(1)}"
@@ -167,6 +177,71 @@ def parse_link(s):
     if m:
         return "live", m.group(1).lower(), f"https://www.twitch.tv/{m.group(1).lower()}"
     raise SystemExit("Link Twitch non valido: " + s)
+
+
+def iso_ts(x):
+    try:
+        return datetime.fromisoformat(str(x).replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return 0.0
+
+
+CLIP_NODE = ("slug title viewCount durationSeconds createdAt thumbnailURL language videoOffsetSeconds "
+             "broadcaster{login displayName profileImageURL(width:70)}")
+
+
+def _clip_row(nd):
+    b = nd.get("broadcaster") or {}
+    return {"slug": nd.get("slug") or "", "titolo": (nd.get("title") or "").strip(), "views": nd.get("viewCount") or 0,
+            "durata": nd.get("durationSeconds") or 0, "creata": iso_ts(nd.get("createdAt")),
+            "anteprima": nd.get("thumbnailURL") or "", "lingua": (nd.get("language") or "").lower(),
+            "offset": nd.get("videoOffsetSeconds"), "login": (b.get("login") or "").lower(),
+            "nome": b.get("displayName") or b.get("login") or "", "avatar": b.get("profileImageURL") or ""}
+
+
+def top_gta_clips(n=30):
+    """Le clip GTA V piu' viste delle ultime 24 ore: momenti che il pubblico di Twitch ha GIA' scelto come forti."""
+    tries = ['query($n:Int){game(name:"Grand Theft Auto V"){clips(first:$n, criteria:{period:LAST_DAY, sort:VIEWS_DESC, '
+             'languages:[EN]}){edges{node{%s}}}}}' % CLIP_NODE,
+             'query($n:Int){game(name:"Grand Theft Auto V"){clips(first:$n, criteria:{period:LAST_DAY, sort:VIEWS_DESC})'
+             '{edges{node{%s}}}}}' % CLIP_NODE]
+    for q in tries:
+        try:
+            d = gql(q, {"n": n})
+            edges = ((((d.get("data") or {}).get("game") or {}).get("clips")) or {}).get("edges")
+            if edges is None:
+                continue
+            out = [_clip_row(e.get("node") or {}) for e in edges]
+            out = [c for c in out if c["slug"] and c["login"] and c["lingua"] in ("", "en")]
+            out.sort(key=lambda c: -c["views"])
+            return out
+        except Exception as e:
+            log("Scout: clip virali non disponibili ->", e)
+    return []
+
+
+def clip_info(slug):
+    try:
+        nd = gql("query($s:ID!){clip(slug:$s){%s}}" % CLIP_NODE, {"s": slug})["data"]["clip"]
+        return _clip_row(nd) if nd else None
+    except Exception as e:
+        log("Scout: info clip non disponibili ->", e)
+        return None
+
+
+def channel_clips(login, since):
+    """Clip create dagli spettatori su questo canale dopo `since`: dove il pubblico ha premuto 'Clip'."""
+    for sort in ("CREATED_AT_DESC", "VIEWS_DESC"):
+        try:
+            d = gql('query($l:String!){user(login:$l){clips(first:50, criteria:{period:LAST_DAY, sort:%s})'
+                    '{edges{node{%s}}}}}' % (sort, CLIP_NODE), {"l": login})
+            edges = ((((d.get("data") or {}).get("user") or {}).get("clips")) or {}).get("edges")
+            if edges is None:
+                continue
+            return [c for c in (_clip_row(e.get("node") or {}) for e in edges) if c["creata"] >= since]
+        except Exception as e:
+            log("Hunter: clip degli spettatori non disponibili ->", e)
+    return []
 
 
 def vod_channel(vid):
@@ -183,13 +258,26 @@ def cam_for(cfg, ch):
     return cfg.get("facecam_default", "auto")
 
 
-def recent_clipped(window=3600):
+def gallery():
     try:
-        clips = json.load(open(os.path.join(PAGES, "clips.json")))
+        return json.load(open(os.path.join(PAGES, "clips.json")))
     except Exception:
-        return set()
+        return []
+
+
+def recent_clipped(window=3600):
     now = time.time()
-    return {c["ch"] for c in clips if now - c.get("created", 0) < window}
+    return {c["ch"] for c in gallery() if now - c.get("created", 0) < window and c.get("fonte") != "virale"}
+
+
+def done_slugs():
+    return {c.get("slug") for c in gallery() if c.get("slug")}
+
+
+def clip_job(c, cfg, style_in="", cam_in=""):
+    return {"tipo": "clip", "url": f"https://clips.twitch.tv/{c['slug']}", "ch": c["login"], "nome": c["nome"] or c["login"],
+            "stile": style_in or auto_style(c["titolo"], []), "facecam": cam_in or cam_for(cfg, c["login"]),
+            "minuti": 0, "da": 0, "titolo": c["titolo"], "slug": c["slug"], "views": c["views"], "webcam": c.get("webcam")}
 
 
 def scout():
@@ -198,7 +286,7 @@ def scout():
     st = {"jobs": [], "clips": [], "inizio": int(time.time())}
     link, style_in, cam_in = env("LINK"), env("STILE"), env("FACECAM")
     minutes = max(1.0, min(30.0, float(env("MINUTI") or cfg.get("minuti", 10))))
-    lives = english_gta_lives(30)
+    lives = english_gta_lives(40)
     log(f"Scout: {len(lives)} live GTA V in inglese adesso")
     mine = []
     for c in cfg.get("canali", []):
@@ -212,6 +300,9 @@ def scout():
     seen = {m["login"] for m in mine}
     excl = set(x.lower() for x in cfg.get("escludi", []))
     live_list = [l for l in mine + [l for l in lives if l["login"] not in seen] if l["login"] not in excl]
+    top = sorted(live_list, key=lambda l: -l["spettatori"])
+    for k, l in enumerate(top):
+        l["rank"] = k + 1                                      # classifica per spettatori (anche i tuoi canali)
     for l in live_list[:30]:
         l["stile"] = auto_style(l["titolo"], l.get("tag", []))
         f = webcam_in_preview(l.pop("grande", "") or l["anteprima"])
@@ -221,34 +312,70 @@ def scout():
         l["stile"] = auto_style(l["titolo"], l.get("tag", []))
         l["webcam"] = None
     log(f"Scout: {sum(1 for l in live_list if l.get('webcam'))} live su {len(live_list)} hanno la webcam")
+    if top:
+        log("Scout: top 5 per spettatori -> " + ", ".join(f"{l['nome']} ({l['spettatori']})" for l in top[:5]))
+
+    # clip virali di oggi: i momenti GTA piu' visti delle ultime 24 ore
+    virali = [c for c in top_gta_clips(40) if c["login"] not in excl and c["views"] >= int(cfg.get("min_views_clip_virale", 1500))
+              and 6 <= (c["durata"] or 30) <= 90]
+    for c in virali[:16]:
+        f = webcam_in_preview(c["anteprima"], 0.7)
+        c["webcam"] = [round(v, 4) for v in f[:4]] if f else None
+        c["stile"] = auto_style(c["titolo"], [])
+    log(f"Scout: {len(virali)} clip GTA virali oggi" + (f", la prima ha {virali[0]['views']} views" if virali else ""))
+
     if link:
         kind, ident, url = parse_link(link)
-        ch = vod_channel(ident) if kind == "vod" else ident
-        info = next((l for l in live_list if l["login"] == ch), {})
-        st["jobs"].append({"url": url, "ch": ch, "nome": info.get("nome") or ch,
-                           "stile": style_in or info.get("stile") or cfg.get("stile_default", "hype"),
-                           "facecam": cam_in or cam_for(cfg, ch), "minuti": minutes,
-                           "da": float(os.environ.get("DA") or 0), "titolo": info.get("titolo", ""), "webcam": info.get("webcam")})
+        if kind == "clip":
+            c = clip_info(ident) or {"slug": ident, "login": "streamer", "nome": "streamer", "titolo": "", "views": 0}
+            st["jobs"].append(clip_job(c, cfg, style_in, cam_in))
+        else:
+            ch = vod_channel(ident) if kind == "vod" else ident
+            info = next((l for l in live_list if l["login"] == ch), {})
+            st["jobs"].append({"tipo": kind, "url": url, "ch": ch, "nome": info.get("nome") or ch,
+                               "stile": style_in or info.get("stile") or cfg.get("stile_default", "hype"),
+                               "facecam": cam_in or cam_for(cfg, ch), "minuti": minutes,
+                               "da": float(os.environ.get("DA") or 0), "titolo": info.get("titolo", ""),
+                               "webcam": info.get("webcam"), "dal": info.get("dal", ""), "manuale": True})
+        st["jobs"][-1]["manuale"] = True
     elif env("SOLO_SCOUT") != "1":
+        # 1) momenti gia' provati: le clip piu' viste di oggi, prima quelle con la webcam (formato facecam + gioco)
+        used = done_slugs()
+        fresh = [c for c in virali if c["slug"] not in used]
+        fresh.sort(key=lambda c: (not c.get("webcam"), -c["views"]))
+        per_ch = {}
+        for c in fresh:
+            if len([j for j in st["jobs"] if j["tipo"] == "clip"]) >= int(cfg.get("clip_virali_per_giro", 2)):
+                break
+            if per_ch.get(c["login"]):
+                continue                                          # varieta': un solo streamer per giro
+            per_ch[c["login"]] = 1
+            st["jobs"].append(clip_job(c, cfg, style_in, cam_in))
+        # 2) la live piu' seguita (con webcam), letta anche dalla chat
         recent = recent_clipped()
-        others = [l for l in live_list if not l.get("tuo")] if cfg.get("scopri_top_gta", True) else []
+        others = [l for l in top if not l.get("tuo")] if cfg.get("scopri_top_gta", True) else []
         if cfg.get("solo_con_webcam", True):
-            others = [l for l in others if l.get("webcam")]       # in automatico solo live con la faccia dello streamer
-        pool = mine + others
-        for l in pool:
-            if len(st["jobs"]) >= int(cfg.get("max_live_per_giro", 1)):
+            others = [l for l in others if l.get("webcam")]
+        n_live = 0
+        for l in mine + others:
+            if n_live >= int(cfg.get("max_live_per_giro", 1)):
                 break
             if l["login"] in recent and not l.get("tuo"):
                 continue
-            st["jobs"].append({"url": f"https://www.twitch.tv/{l['login']}", "ch": l["login"], "nome": l.get("nome") or l["login"],
-                               "stile": style_in or l["stile"],
-                               "facecam": cam_in or cam_for(cfg, l["login"]), "minuti": minutes, "da": 0, "titolo": l["titolo"],
-                               "webcam": l.get("webcam")})
+            n_live += 1
+            st["jobs"].append({"tipo": "live", "url": f"https://www.twitch.tv/{l['login']}", "ch": l["login"],
+                               "nome": l.get("nome") or l["login"], "stile": style_in or l["stile"],
+                               "facecam": cam_in or cam_for(cfg, l["login"]), "minuti": minutes, "da": 0,
+                               "titolo": l["titolo"], "webcam": l.get("webcam"), "dal": l.get("dal", ""),
+                               "spettatori": l["spettatori"]})
     for j in st["jobs"]:
         if j["stile"] not in STYLES:
             j["stile"] = "hype"
-        log(f"Scout: clippo {j['ch']} in stile {STYLES[j['stile']]['nome']} ({j['minuti']:.0f} min)")
-    st["live"] = live_list[:24]
+        what = f"clip virale ({j.get('views', 0)} views)" if j["tipo"] == "clip" else f"{j['minuti']:.0f} min di {j['tipo']}"
+        log(f"Scout: {j['ch']} · {what} · stile {STYLES[j['stile']]['nome']}")
+    st["live"] = live_list[:30]
+    st["virali"] = [{k: c.get(k) for k in ("slug", "titolo", "views", "durata", "creata", "anteprima", "login", "nome",
+                                            "avatar", "webcam", "stile")} for c in virali[:20]]
     save_state(st)
     publish(st, final=False)
 
@@ -256,24 +383,117 @@ def scout():
 # ================================================================ HUNTER: registrazione
 QUALITY = "1080p60,1080p,936p60,900p60,720p60,720p,best"
 
+# Parole ed emote che in chat segnalano un momento forte (risata, shock, "clippalo")
+CHAT_HYPE = re.compile(r"(?i)\b(kekw|lulw?|omegalul|lmf?a+o+|lo+l|icant|pog\w*|omg|wtf|holy|no ?way|bro+|dead+|monka\w*|"
+                       r"aware|o7|sadge|ez+|gg+|ratio|jesus|insane|crazy|wild)\b")
+CHAT_EMOJI = ("💀", "😂", "🤣", "😭", "😱", "🔥")
+
+
+def chat_weight(msg):
+    m = msg.strip()
+    w = 1.0
+    if CHAT_HYPE.search(m) or any(e in m for e in CHAT_EMOJI):
+        w += 1.5
+    if re.search(r"(?i)\bclip", m):
+        w += 2.5                                   # "CLIP IT" = il pubblico ci dice dov'e' il momento
+    if re.fullmatch(r"(?i)\s*([wl]+|\?+|!+|[A-Z ]{6,})\s*", m):
+        w += 1.0                                   # spam di W / L / ??? / maiuscolo = reazione collettiva
+    return w
+
+
+class ChatLogger(threading.Thread):
+    """Legge la chat Twitch in sola lettura (utente anonimo) e segna l'ora di ogni messaggio con il suo peso."""
+
+    def __init__(self, ch):
+        super().__init__(daemon=True)
+        self.ch, self.msgs, self.halt = ch.lower(), [], threading.Event()
+
+    def run(self):
+        while not self.halt.is_set():
+            try:
+                s = socket.create_connection(("irc.chat.twitch.tv", 6667), timeout=15)
+                s.sendall(f"NICK justinfan{random.randint(10000, 99999)}\r\nJOIN #{self.ch}\r\n".encode())
+                s.settimeout(2)
+                buf = b""
+                while not self.halt.is_set():
+                    try:
+                        data = s.recv(16384)
+                    except socket.timeout:
+                        continue
+                    if not data:
+                        break
+                    buf += data
+                    *lines, buf = buf.split(b"\r\n")
+                    for ln in lines:
+                        if ln.startswith(b"PING"):
+                            s.sendall(b"PONG :tmi.twitch.tv\r\n")
+                        elif b" PRIVMSG " in ln:
+                            rest = ln.split(b" PRIVMSG ", 1)[1]
+                            txt = rest.split(b" :", 1)[1].decode("utf-8", "ignore") if b" :" in rest else ""
+                            self.msgs.append((time.time(), chat_weight(txt)))
+                s.close()
+            except Exception as e:
+                log("Hunter: chat interrotta, riprovo ->", e)
+                self.halt.wait(3)
+
 
 def record():
-    st = load_state()
+    st, cfg = load_state(), load_cfg()
     for i, j in enumerate(st["jobs"]):
+        if j.get("tipo") == "clip":
+            out = os.path.join(WORK, f"rec_{i}.mp4")
+            log(f"Hunter: scarico la clip virale di {j['ch']} ({j.get('views', 0)} views)")
+            subprocess.run(["streamlink", "--retry-open", "3", "-f", "-o", out, j["url"], "1080p60,1080p,720p60,720p,best"],
+                           check=False, timeout=600)
+            j["file"] = out if os.path.exists(out) and os.path.getsize(out) > 300_000 else None
+            if not j["file"]:
+                log("Hunter: clip non scaricabile", j["url"])
+            continue
         out = os.path.join(WORK, f"rec_{i}.ts")
+        secs = int(j["minuti"] * 60)
         cmd = ["streamlink", "--twitch-disable-ads", "--retry-open", "3", "--retry-streams", "5",
-               "--stream-segment-threads", "3", "--hls-duration", str(int(j["minuti"] * 60)), "-f", "-o", out]
+               "--stream-segment-threads", "3", "--hls-duration", str(secs), "-f", "-o", out]
         if j.get("da"):
             cmd += ["--hls-start-offset", str(int(j["da"] * 60))]
         cmd += [j["url"], QUALITY]
-        log(f"Hunter: registro {j['ch']} per {j['minuti']:.0f} min")
-        try:
-            subprocess.run(cmd, check=False, timeout=j["minuti"] * 60 + 600)
-        except subprocess.TimeoutExpired:
-            log("Hunter: registrazione oltre il tempo, uso quello che c'e'")
+        live = j.get("tipo") == "live"
+        chat = ChatLogger(j["ch"]) if live and cfg.get("chat", True) else None
+        if chat:
+            chat.start()
+        log(f"Hunter: registro {j['ch']} per {j['minuti']:.0f} min" + (" e leggo la chat" if chat else ""))
+        started, t0 = time.time(), None
+        proc = subprocess.Popen(cmd)
+        while proc.poll() is None:
+            if t0 is None and os.path.exists(out) and os.path.getsize(out) > 0:
+                t0 = time.time()                   # primo secondo davvero registrato: allinea la chat al video
+            if time.time() - started > secs + 600:
+                log("Hunter: registrazione oltre il tempo, uso quello che c'e'")
+                proc.kill()
+                break
+            time.sleep(0.5)
+        t0 = t0 or started
         j["file"] = out if os.path.exists(out) and os.path.getsize(out) > 2_000_000 else None
         if not j["file"]:
             log("Hunter: niente di utile da", j["ch"])
+        if chat:
+            chat.halt.set()
+            msgs = [(round(t - t0, 2), w) for t, w in chat.msgs if t >= t0 - 5]
+            json.dump(msgs, open(os.path.join(WORK, f"chat_{i}.json"), "w"))
+            j["chat"] = f"chat_{i}.json"
+            log(f"Hunter: {len(msgs)} messaggi in chat ({len(msgs) / max(1, secs) * 60:.0f} al minuto)")
+            time.sleep(20)                        # lascia agli spettatori il tempo di pubblicare le ultime clip
+            marks = []
+            start_live = iso_ts(j.get("dal"))
+            for c in channel_clips(j["ch"], t0 - 120):
+                d = float(c["durata"] or 30)
+                if c.get("offset") is not None and start_live:
+                    s0 = start_live + float(c["offset"]) - t0
+                else:
+                    s0 = c["creata"] - t0 - d - 4
+                if s0 + d > 0 and s0 < secs + 20:
+                    marks.append({"s": round(s0, 1), "e": round(s0 + d, 1), "views": c["views"], "titolo": c["titolo"]})
+            j["clip_spettatori"] = marks
+            log(f"Hunter: {len(marks)} clip create dagli spettatori durante la registrazione")
     save_state(st)
 
 
@@ -306,15 +526,17 @@ def motion(path, n, cam):
     if cam:
         x, y, w, h = cam
         mask[int(y * H):int(math.ceil((y + h) * H)), int(x * W):int(math.ceil((x + w) * W))] = False
-    mot, cx = np.zeros(n), np.full(n, 0.5)
+    mot, cx, lum = np.zeros(n), np.full(n, 0.5), np.full(n, 128.0)
     xs = (np.arange(W) + 0.5) / W
+    for i in range(min(n, len(fr))):
+        lum[i] = float(fr[i][mask].mean()) if mask.any() else float(fr[i].mean())
     for i in range(1, min(n, len(fr))):
         d = np.abs(fr[i] - fr[i - 1]) * mask
         mot[i] = d.sum() / max(1, mask.sum()) / 255
         big = np.where(d > 18, d, 0)
         if big.sum() > 0:
             cx[i] = float((big.sum(axis=0) * xs).sum() / big.sum())
-    return mot, cx
+    return mot, cx, lum
 
 
 _YN = None
@@ -349,13 +571,13 @@ def faces_in(img):
             if fw / w > 0.012]
 
 
-def webcam_in_preview(url):
+def webcam_in_preview(url, soglia=0.8):
     """Lo Scout guarda l'anteprima della live: c'e' una faccia vera (webcam)?"""
     try:
         import cv2
         data = urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=15).read()
         img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
-        fs = [f for f in faces_in(img) if f[4] >= 0.8]
+        fs = [f for f in faces_in(img) if f[4] >= soglia]
         return max(fs, key=lambda f: f[4]) if fs else None
     except Exception:
         return None
@@ -422,22 +644,76 @@ def baseline_z(x, w=60):
     return np.maximum(0, d / mad)
 
 
-def candidates(score, max_n, length, after, dur):
+def chat_series(path, n, lag=5.0):
+    """Hype della chat secondo per secondo, spostato indietro del ritardo di reazione degli spettatori."""
+    try:
+        msgs = json.load(open(path))
+    except Exception:
+        return None
+    if len(msgs) < 30:                          # chat troppo lenta: non e' un segnale affidabile
+        return None
+    arr = np.zeros(n)
+    for t, w in msgs:
+        i = int(round(t - lag))
+        if 0 <= i < n:
+            arr[i] += w
+    return smooth(baseline_z(smooth(arr, 5), 90), 3)
+
+
+def marks_series(marks, n):
+    """Le clip fatte dagli spettatori: piu' peso verso la fine, dove di solito c'e' il momento."""
+    out = np.zeros(n)
+    for m in marks or []:
+        a, b = int(max(0, m["s"])), int(min(n, math.ceil(m["e"])))
+        if b <= a:
+            continue
+        w = 2.0 + math.log10(1 + m.get("views", 0))
+        out[a:b] = np.maximum(out[a:b], w * np.linspace(0.4, 1.0, b - a))
+    return out
+
+
+def bounds(score, peak, style, dur, thr):
+    """Inizio dove parte la situazione (non 20 s prima), fine appena dopo il payoff."""
+    n = len(score)
+    pre_max = max(8, style["durata"] - style["dopo"])
+    s, last, quiet = peak, peak, 0
+    while s > 0 and peak - s < pre_max:
+        s -= 1
+        if score[s] >= thr:
+            last, quiet = s, 0
+        else:
+            quiet += 1
+            if quiet >= 5 and peak - s >= 6:
+                break
+    start = max(0, min(last - 2, peak - 6))
+    e, last, quiet = peak, peak, 0
+    while e < n - 1 and e - peak < style["dopo"] + 8:
+        e += 1
+        if score[e] >= thr:
+            last, quiet = e, 0
+        else:
+            quiet += 1
+            if quiet >= 3 and e - peak >= style["dopo"]:
+                break
+    end = min(dur, max(peak + style["dopo"], last + 1.5))
+    if end - start < 12:                       # minimo 12 s: serve contesto per capire la scena
+        start = max(0, end - 12)
+        end = min(dur, max(end, start + 12))
+    return float(start), float(end)
+
+
+def candidates(score, max_n, style, dur, thr):
     n = len(score)
     taken, picks = np.zeros(n, bool), []
-    order = np.argsort(-score)
-    min_s = max(0.8, 0.2 * score[order[0]])
-    for i in order:
-        if len(picks) >= max_n:
+    for i in np.argsort(-score):
+        if len(picks) >= max_n or score[i] < thr * 1.6:
             break
-        if taken[i] or (score[i] < min_s and picks):
+        if taken[i]:
             continue
-        end = min(dur, i + after)                      # fine subito dopo il payoff
-        start = max(0, end - length)
-        end = min(dur, start + length)
+        start, end = bounds(score, int(i), style, dur, thr)
         if end - start < min(8, dur):
             continue
-        picks.append({"peak": int(i), "start": float(start), "end": float(end), "score": float(score[i])})
+        picks.append({"peak": int(i), "start": start, "end": end, "score": float(score[i])})
         taken[max(0, int(start) - 3):min(n, int(math.ceil(end)) + 3)] = True
     return picks
 
@@ -456,33 +732,74 @@ def micro_peaks(score, zA, zS, c, mx, k=4):
     return sorted(out, key=lambda o: o["t"])
 
 
-def judge(c, zA, zS, score, mx):
+HYPE_WORDS = re.compile(r"(?i)\b(no way|oh my god|oh my gosh|what the|bro|dude|run|go go|holy|wait|stop|why|"
+                        r"let'?s go|are you serious|dead|help|get out|shoot|crazy|insane|yo+|nah)\b")
+
+
+def speech_score(words, length):
+    """Il Judge ascolta: dialogo fitto, esclamazioni e risate = scena con qualcosa da raccontare."""
+    if not words:
+        return 0.0, ""
+    txt = " ".join(w["w"] for w in words)
+    rate = len(words) / max(1.0, length)
+    excl = txt.count("!") + txt.count("?") * 0.5
+    hype = len(HYPE_WORDS.findall(txt))
+    laugh = len(re.findall(r"(?i)\b(ha){2,}|\blol\b|\blmao\b", txt))
+    sc = 0.45 * min(1, rate / 2.2) + 0.25 * min(1, excl / 4) + 0.2 * min(1, hype / 3) + 0.1 * min(1, laugh / 2)
+    return float(sc), txt
+
+
+def judge(c, sig, score, words, length, base=None):
+    """Voto ASSOLUTO: un urlo vero, una chat che esplode, clip degli spettatori. Una live piatta resta sotto soglia."""
+    zA, zS, zC, cm, dead = sig["zA"], sig["zS"], sig["zC"], sig["cm"], sig["dead"]
     n = len(score)
     a, b = int(c["start"]), min(n, int(math.ceil(c["end"])))
-    win = score[a:b]
-    mean = float(win.mean()) if len(win) else 0
     near = [i for i in range(c["peak"] - 4, c["peak"] + 5) if 0 <= i < n]
     pa, ps = float(max(zA[near])), float(max(zS[near]))
-    has_a, has_s = pa > 1.2, ps > 1.2
-    peaks = int((win > 0.5 * mx).sum())
-    v = 30 + 38 * c["score"] / mx + 12 * min(1, mean / (0.45 * mx)) + (12 if has_a and has_s else 7 if has_a else 4 if has_s else 0) \
-        + min(6, peaks) + 4
+    pc = float(max(zC[a:b])) if zC is not None and b > a else 0.0
+    marks = float(max(cm[a:b])) if b > a else 0.0
+    dead_f = float(dead[a:b].mean()) if b > a else 1.0
+    active = float((score[a:b] > 1.0).mean()) if b > a else 0.0
+    sp, txt = speech_score(words, length)
+    R, A = min(1, pa / 6), min(1, ps / 5)
+    C = min(1, max(pc / 5, marks / 4))
+    if base is not None:                       # clip virale: il pubblico l'ha gia' votata con le views
+        v = base + 8 * R + 4 * A + 6 * sp - 10 * dead_f
+    elif zC is not None or marks > 0:
+        v = 12 + 24 * R + 12 * A + 26 * C + 14 * sp + 10 * active - 18 * dead_f
+    else:                                      # VOD o chat assente: urla e azione pesano di piu'
+        v = 14 + 34 * R + 18 * A + 16 * sp + 12 * active - 18 * dead_f
     pct = lambda x: int(round(max(0, min(1, x)) * 100))
-    c.update(viral=int(round(max(5, min(98, v)))), has_a=bool(has_a), has_s=bool(has_s),
-             subs={"Hook": pct(0.35 + 0.65 * c["score"] / mx), "Azione": pct(ps / 4), "Reazione": pct(pa / 4),
-                   "Ritmo": pct(0.25 * min(4, peaks) + 0.6 * mean / mx)})
+    why = []
+    if marks > 0:
+        why.append("clippata dagli spettatori")
+    if C >= 0.5 and pc > 0:
+        why.append("chat esplosa")
+    if R >= 0.5:
+        why.append("urlo/reazione forte")
+    if A >= 0.5:
+        why.append("tanta azione")
+    if sp >= 0.45:
+        why.append("dialogo intenso")
+    if base is not None:
+        why.insert(0, "tra le clip GTA più viste oggi")
+    c.update(viral=int(round(max(5, min(98, v)))), has_a=R >= 0.3, has_s=A >= 0.3, has_c=C >= 0.4,
+             subs={"Reazione": pct(R), "Azione": pct(A), "Chat": pct(C), "Parlato": pct(sp)},
+             perche=" · ".join(why) or "picco di hype", dead=round(dead_f, 2), testo=txt[:400])
     return c
 
 
 def analyze():
     st, cfg = load_state(), load_cfg()
     st["analisi"] = []
-    for j in st["jobs"]:
+    model = cfg.get("whisper_model", "base.en")
+    for i, j in enumerate(st["jobs"]):
         if not j.get("file"):
             continue
         src = j["file"]
         sw, shh, dur = probe(src)
         style = STYLES.get(j["stile"], STYLES["hype"])
+        viral_clip = j.get("tipo") == "clip"
         cam = None
         if j["facecam"] == "auto":
             cam = find_facecam(src, dur, sw, shh, j.get("webcam"))
@@ -495,35 +812,75 @@ def analyze():
         n = int(math.ceil(dur)) + 1
         log(f"Hunter: analizzo {j['ch']} ({sw}x{shh}, {dur / 60:.1f} min)")
         try:
-            zA = smooth(baseline_z(audio_db(src, n), 60), 3)
+            db = audio_db(src, n)
         except Exception as e:
             log("Hunter: audio non leggibile ->", e)
-            zA = np.zeros(n)
-        mot, cx = motion(src, n, cam)
+            db = np.full(n, -90.0)
+        zA = smooth(baseline_z(db, 60 if not viral_clip else 20), 3)
+        mot, cx, lum = motion(src, n, cam)
         zS = smooth(robust_z(mot), 5)
-        score = smooth(style["w_audio"] * zA + style["w_scene"] * zS + 0.35 * np.minimum(zA, zS), 3)
+        zC = chat_series(os.path.join(WORK, j["chat"]), n) if j.get("chat") else None
+        cm = marks_series(j.get("clip_spettatori"), n)
+        if j.get("chat"):
+            log("Hunter: chat " + ("usata come segnale" if zC is not None else "troppo lenta, ignorata"))
+        # tempi morti: silenzio + immagine ferma (menu, caricamenti, AFK) o schermo nero
+        quiet = db < (np.median(db) - 9)
+        static = mot < max(0.0025, float(np.percentile(mot, 10)))
+        dead = ((quiet & static) | (lum < 12)).astype(float)
+        dead = smooth(dead, 3)
+        score = style["w_audio"] * zA + style["w_scene"] * zS + 0.35 * np.minimum(zA, zS)
+        if zC is not None:
+            score = score + 1.3 * zC + 0.4 * np.minimum(zA, zC)
+        score = smooth(score + 0.9 * cm - 1.2 * dead, 3)
         score[:3] *= 0.3
         score[-3:] *= 0.3
+        score = np.maximum(score, 0)
         mx = max(1e-6, float(score.max()))
-        keep = int(cfg.get("clip_per_live", 2))
-        length = min(style["durata"], dur)
-        cands = [judge(c, zA, zS, score, mx) for c in candidates(score, max(keep * 2 + 2, 6), length, style["dopo"], dur)]
-        cands.sort(key=lambda c: -c["viral"])
-        chosen = [c for k, c in enumerate(cands) if k < keep and (c["viral"] >= cfg.get("voto_minimo", 55) or k == 0)]
-        log(f"Judge: {len(cands)} candidati, tengo {len(chosen)} -> " + ", ".join(str(c["viral"]) for c in chosen))
+        thr = max(0.8, float(np.percentile(score, 60)))
+        keep = int(cfg.get("clip_per_live", 2)) if not viral_clip else 1
+        if viral_clip:
+            # gia' scelta dal pubblico: la tengo intera se e' corta, altrimenti prendo la finestra migliore
+            if dur <= style["durata"] + 12:
+                cands = [{"peak": int(np.argmax(score[:max(1, n - 2)])), "start": 0.0, "end": float(dur), "score": mx}]
+            else:
+                cands = candidates(score, 2, style, dur, thr) or [{"peak": int(np.argmax(score)), "start": 0.0,
+                                                                    "end": float(min(dur, style["durata"])), "score": mx}]
+            views = max(1, int(j.get("views") or 1))
+            base = max(48, min(80, 52 + 9 * math.log10(views / 500)))
+        else:
+            cands = candidates(score, max(keep * 3, 6), style, dur, thr)
+            base = None
+        # il Judge ascolta i candidati migliori prima di votare
+        ranked = sorted(cands, key=lambda c: -c["score"])[:6]
+        sig = {"zA": zA, "zS": zS, "zC": zC, "cm": cm, "dead": dead}
+        for c in ranked:
+            words = transcribe(src, model, c["start"], c["end"] - c["start"]) if cfg.get("sottotitoli", True) else []
+            judge(c, sig, score, words, c["end"] - c["start"], base)
+        ranked.sort(key=lambda c: -c["viral"])
+        manual = bool(j.get("manuale"))
+        soglia = int(cfg.get("voto_minimo", 60))
+        chosen = [c for k, c in enumerate(ranked) if k < keep and (c["viral"] >= soglia or (manual and k == 0)
+                                                                    or (viral_clip and k == 0))]
+        log(f"Judge: {len(ranked)} candidati -> voti " + ", ".join(f"{c['viral']} ({c['perche']})" for c in ranked))
+        if not chosen:
+            log(f"Judge: niente sopra {soglia}/100 in questa live: non pubblico clip mediocri")
         for c in chosen:
             a, b = int(c["start"]), int(math.ceil(c["end"]))
             k_follow = 0.8 if cam else 0.35         # senza facecam il gioco e' piu' stretto: resta sul personaggio al centro
             c["cx"] = float(np.clip(0.5 + (np.median(cx[a:b]) - 0.5) * k_follow, 0.3, 0.7)) if cfg.get("segui_azione", True) else 0.5
             c["zooms"] = micro_peaks(score, zA, zS, c, mx) if cfg.get("micro_zoom", True) else []
         step = max(1, n // 160)
-        st["analisi"].append({"ch": j["ch"], "durata": round(dur), "passo": step, "stile": j["stile"],
+        st["analisi"].append({"ch": j["ch"], "durata": round(dur), "passo": step, "stile": j["stile"], "tipo": j.get("tipo", "live"),
                               "hype": [round(float(v), 2) for v in score[::step]],
                               "urla": [round(float(v), 2) for v in zA[::step]],
                               "azione": [round(float(v), 2) for v in zS[::step]],
+                              "chat": [round(float(v), 2) for v in zC[::step]] if zC is not None else [],
+                              "spettatori": [m["s"] for m in j.get("clip_spettatori") or []],
                               "scelte": [{"start": round(c["start"]), "end": round(c["end"]), "viral": c["viral"],
-                                          "zoom": [z["t"] for z in c["zooms"]]} for c in chosen],
-                              "candidati": len(cands), "facecam": bool(cam), "quando": int(time.time())})
+                                          "perche": c["perche"], "zoom": [z["t"] for z in c["zooms"]]} for c in chosen],
+                              "scartate": [{"start": round(c["start"]), "end": round(c["end"]), "viral": c["viral"]}
+                                           for c in ranked if c not in chosen],
+                              "soglia": soglia, "candidati": len(ranked), "facecam": bool(cam), "quando": int(time.time())})
         j.update(sw=sw, shh=shh, dur=dur, cam=cam, chosen=chosen)
     save_state(st)
 
@@ -592,17 +949,22 @@ def build_base(src, j, c, style, out, teaser=True):
 _WHISPER = None
 
 
-def transcribe(path, model_name):
+def transcribe(path, model_name, ss=None, t=None):
     global _WHISPER
     try:
         from faster_whisper import WhisperModel
     except Exception:
-        log("Editor: Whisper non installato, niente sottotitoli")
+        if _WHISPER is None:
+            log("Whisper non installato: niente ascolto ne' sottotitoli")
+            _WHISPER = False
+        return []
+    if _WHISPER is False:
         return []
     try:
         if _WHISPER is None:
             _WHISPER = WhisperModel(model_name, device="cpu", compute_type="int8")
-        raw = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-vn", "-ac", "1", "-ar", "16000", "-f", "f32le", "-"],
+        rng = (["-ss", f"{ss:.2f}", "-t", f"{t:.2f}"] if ss is not None else [])
+        raw = subprocess.run(["ffmpeg", "-v", "error", *rng, "-i", path, "-vn", "-ac", "1", "-ar", "16000", "-f", "f32le", "-"],
                              capture_output=True, check=True).stdout          # audio gia' pronto: niente PyAV
         audio = np.frombuffer(raw, dtype=np.float32).copy()
         segs, _ = _WHISPER.transcribe(audio, word_timestamps=True, vad_filter=True, language="en", beam_size=3)
@@ -696,6 +1058,19 @@ def quote_hook(words, peak_t):
     return f'"{best.rstrip(".")}"' if best and score >= 1.3 else None
 
 
+def title_hook(title):
+    """Il titolo dato dallo spettatore che ha creato la clip virale e' spesso il miglior hook: lo pulisco."""
+    t = re.sub(r"[^\x20-\x7E]", " ", title or "")
+    t = re.sub(r"\s+", " ", re.sub(r"[@#]\w+", "", t)).strip(" -|:")
+    n = len(t.split())
+    if not (3 <= n <= 10) or BAD.search(t) or len(re.findall(r"[A-Za-z]", t)) < 8:
+        return None
+    if t.isupper():                            # TUTTO MAIUSCOLO: minuscolo, ma tengo le sigle corte (CG, PD, RP)
+        t = " ".join(w if len(w) <= 3 else w.lower() for w in t.split())
+    first = t.split()[0]
+    return t[0].upper() + t[1:] if first.islower() else t
+
+
 def style_hex(style):
     c = style["colore"][4:]          # &H00BBGGRR -> RRGGBB
     return c[4:6] + c[2:4] + c[0:2]
@@ -765,15 +1140,17 @@ def edit():
             try:
                 split, top, teaser_len, total = build_base(j["file"], j, c, style, base, cfg.get("teaser", True))
                 words = transcribe(base, cfg.get("whisper_model", "base.en")) if cfg.get("sottotitoli", True) else []
-                kind = "both" if c["has_a"] and c["has_s"] else "audio" if c["has_a"] else "scene" if c["has_s"] else "weak"
-                hook = quote_hook(words, teaser_len + c["peak"] - c["start"]) if j["stile"] != "action" else None
-                opts = [h.format(n=j.get("nome") or j["ch"]) for h in bank[kind] + [x for kk in ("both", "audio", "scene") for x in bank[kk]]]
-                off = int(time.time()) // 60
-                pick = next((opts[(off + q) % len(opts)] for q in range(len(opts)) if opts[(off + q) % len(opts)] not in used), opts[0])
+                kind = "chat" if c.get("has_c") else "both" if c["has_a"] and c["has_s"] else "audio" if c["has_a"] \
+                    else "scene" if c["has_s"] else "weak"
+                hook = title_hook(j.get("titolo", "")) if j.get("tipo") == "clip" else None
+                hook = hook or (quote_hook(words, teaser_len + c["peak"] - c["start"]) if j["stile"] != "action" else None)
+                nm, off = j.get("nome") or j["ch"], int(time.time()) // 60
+                own = [h.format(n=nm) for h in bank[kind]]                 # prima gli hook adatti a questo tipo di momento
+                own = own[off % len(own):] + own[:off % len(own)]
+                rest = [h.format(n=nm) for kk in ("both", "audio", "scene") for h in bank[kk]]
+                pick = next((h for h in own + rest if h not in used), own[0])
                 c["hook"] = hook if hook and hook not in used else pick
                 used.add(c["hook"])
-                if words:                      # dialogo fitto = clip RP piu' guardabile: piccolo bonus al Judge
-                    c["viral"] = int(min(98, c["viral"] + min(5, len(words) / max(1, total) * 2)))
                 n_sub = finish(base, c, j["ch"], style, split, top, teaser_len, total, words, mp4, jpg)
                 os.remove(base)
             except Exception as e:
@@ -783,7 +1160,9 @@ def edit():
                          "hook": c["hook"], "caption": caption(c, j.get("nome") or j["ch"], j["stile"], j.get("titolo", "")),
                          "viral": c["viral"], "subs": c["subs"], "zoom": len(c.get("zooms", [])), "sottotitoli": n_sub > 0,
                          "facecam": bool(j.get("cam")), "durata": round(total, 1), "created": int(time.time()),
-                         "at": round(c["start"]), "mb": round(os.path.getsize(mp4) / 1048576, 1)})
+                         "at": round(c["start"]), "mb": round(os.path.getsize(mp4) / 1048576, 1),
+                         "fonte": "virale" if j.get("tipo") == "clip" else j.get("tipo", "live"), "slug": j.get("slug"),
+                         "views": j.get("views"), "perche": c.get("perche", "")})
             log(f"Editor: fatto '{c['hook']}' · {n_sub} sottotitoli · {made[-1]['mb']} MB")
     st["clips"] = made
     save_state(st)
@@ -827,18 +1206,21 @@ def publish(st=None, final=True):
     clips = clips[:keep]
     json.dump(clips, open(db_path, "w"), ensure_ascii=False, indent=1)
     if "live" in st:
-        json.dump({"aggiornato": int(time.time()), "live": st["live"]}, open(os.path.join(PAGES, "live.json"), "w"),
+        json.dump({"aggiornato": int(time.time()), "live": st["live"], "virali": st.get("virali", [])},
+                  open(os.path.join(PAGES, "live.json"), "w"),
                   ensure_ascii=False, indent=1)
     try:
         status = json.load(open(os.path.join(PAGES, "status.json")))
     except Exception:
         status = {}
     status.update({"controllato": int(time.time()), "in_corso": not final,
-                   "lavori": [{"ch": j["ch"], "stile": j["stile"], "minuti": j["minuti"]} for j in st.get("jobs", [])]})
+                   "lavori": [{"ch": j["ch"], "stile": j["stile"], "minuti": j["minuti"], "tipo": j.get("tipo", "live")}
+                              for j in st.get("jobs", [])]})
     if final:
         status["nuove_clip"] = len(new)
         if st.get("analisi"):
-            status["analisi"] = st["analisi"][-1]
+            lives_a = [a for a in st["analisi"] if a.get("tipo") != "clip"]
+            status["analisi"] = (lives_a or st["analisi"])[-1]          # il radar mostra la live (piu' interessante)
     json.dump(status, open(os.path.join(PAGES, "status.json"), "w"), ensure_ascii=False, indent=1)
     shutil.copy(os.path.join(ROOT, "site", "index.html"), os.path.join(PAGES, "index.html"))
     open(os.path.join(PAGES, ".nojekyll"), "w").close()
@@ -873,7 +1255,7 @@ if __name__ == "__main__":
     elif stage == "all":
         if os.environ.get("TEST_FILE"):
             save_state({"jobs": [{"url": "", "ch": "teststreamer", "stile": os.environ.get("STILE", "hype"),
-                                  "facecam": os.environ.get("FACECAM", "auto"), "minuti": 0, "da": 0, "titolo": "NoPixel RP",
+                                  "facecam": os.environ.get("FACECAM", "auto"), "minuti": 0, "da": 0, "titolo": "NoPixel RP", "tipo": "vod", "manuale": True,
                                   "file": os.environ["TEST_FILE"]}], "clips": [], "live": []})
         else:
             scout()

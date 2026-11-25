@@ -7,12 +7,15 @@
   "escludi": [],
   "minuti": 10,
   "clip_per_live": 2,
-  "voto_minimo": 55,
+  "voto_minimo": 60,
   "max_live_per_giro": 1,
   "teaser": true,
   "micro_zoom": true,
   "segui_azione": true,
   "sottotitoli": true,
   "whisper_model": "base.en",
-  "tieni_clip": 40
+  "tieni_clip": 40,
+  "clip_virali_per_giro": 2,
+  "min_views_clip_virale": 1500,
+  "chat": true
 }
