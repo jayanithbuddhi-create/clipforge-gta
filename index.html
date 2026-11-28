@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ClipForge">
+<meta name="theme-color" content="#0d0b14">
+<title>ClipForge GTA</title>
+<style>
+/* VOICE: sala regia notturna di un'agenzia di clipping GTA: quattro agenti al lavoro, tu decidi e pubblichi.
+   IDEA: la plancia di controllo di una squadra di clipper, con la catena di montaggio che si accende in tempo reale.
+   PICTURE: la catena Scout → Hunter → Judge → Editor con l'agente attivo acceso, e il radar dell'hype della live.
+   COLOUR and TYPE: notte di Los Santos #0d0b14, viola Twitch, oro "mission passed", un colore per agente; Anton + Inter.
+   LAYOUT: app da iPhone a schede: Agenti, Live, Clip; fogli dal basso per clippare e impostare. */
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap');
+:root{color-scheme:dark;--bg:#0d0b14;--panel:#16131f;--panel2:#201c2c;--line:#2d2840;--ink:#f1eef8;--muted:#9a93ad;--gold:#ffb21a;--tw:#9146ff;--ok:#35d48f;--rec:#ff3b5c;
+  --scout:#4fc3ff;--hunter:#ff5c7a;--judge:#ffb21a;--editor:#8b6cff}
+*{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:radial-gradient(120% 60% at 80% -10%,#9146ff2e,#0000 60%),radial-gradient(90% 50% at 0% 0%,#ffb21a14,#0000 55%),var(--bg);background-attachment:fixed;color:var(--ink);font:16px/1.5 Inter,-apple-system,system-ui,sans-serif;overflow-x:clip}
+.wrap{max-width:980px;margin:0 auto;padding:max(14px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) calc(96px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+header{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}
+h1{font:400 34px/1 Anton,Impact,sans-serif;margin:0}h1 span{color:var(--gold)}
+h2{font:400 24px/1.1 Anton,Impact,sans-serif;margin:0 0 4px}
+.lead{color:var(--muted);font-size:14px;margin:0 0 12px}
+.iconbtn{width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--ink);display:grid;place-items:center;cursor:pointer}
+.iconbtn svg{width:22px;height:22px}
+.card{background:#16131fe8;border:1px solid var(--line);border-radius:20px;padding:16px;margin-bottom:14px}
+.view{display:none}.view.on{display:block}
+/* catena degli agenti */
+.chain{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;position:relative}
+.chain::before{content:"";position:absolute;left:12%;right:12%;top:38px;height:2px;background:linear-gradient(90deg,var(--scout),var(--hunter),var(--judge),var(--editor));opacity:.35}
+.agent{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px}
+.agent .ic{width:76px;height:76px;border-radius:24px;display:grid;place-items:center;background:var(--panel2);border:2px solid var(--line);position:relative;z-index:1;transition:transform .3s}
+.agent .ic svg{width:40px;height:40px;color:var(--c)}
+.agent b{font-size:14px}.agent small{font-size:12px;color:var(--muted);line-height:1.3;min-height:32px}
+.agent.run .ic{border-color:var(--c);box-shadow:0 0 0 6px color-mix(in srgb,var(--c) 22%,transparent),0 0 28px color-mix(in srgb,var(--c) 45%,transparent);animation:beat 1.4s ease-in-out infinite}
+.agent.done .ic{border-color:color-mix(in srgb,var(--c) 60%,transparent)}
+.agent.done .ic::after{content:"✓";position:absolute;right:-6px;top:-6px;width:22px;height:22px;border-radius:50%;background:var(--ok);color:#06140d;font:800 13px/22px Inter;text-align:center}
+@keyframes beat{50%{transform:scale(1.06)}}
+@media(max-width:430px){.agent .ic{width:64px;height:64px;border-radius:20px}.agent .ic svg{width:34px;height:34px}.chain::before{top:32px}}
+.runline{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:14px}
+.runline b{font-weight:700}.runline small{color:var(--muted)}
+.pbar{height:6px;border-radius:4px;background:var(--panel2);overflow:hidden;margin-top:8px}.pbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--scout),var(--hunter),var(--judge),var(--editor));transition:width .6s}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#555068;margin-right:6px;vertical-align:middle}
+.dot.live{background:var(--rec);box-shadow:0 0 0 4px #ff3b5c33}.dot.ok{background:var(--ok)}.dot.run{background:var(--gold);box-shadow:0 0 0 4px #ffb21a33}
+/* grafico hype */
+.fig{position:relative;height:190px;margin:8px 0 4px}.fig svg{position:absolute;inset:0;width:100%;height:100%}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.legend span::before{content:"";display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle;background:var(--c)}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+.stat{background:var(--panel2);border-radius:14px;padding:10px}.stat b{display:block;font:400 26px/1.1 Anton,sans-serif}.stat small{color:var(--muted);font-size:12px}
+/* live */
+.lives{display:grid;grid-template-columns:repeat(1,minmax(0,1fr));gap:12px}
+@media(min-width:560px){.lives{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(min-width:900px){.lives{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.live{background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden;display:flex;flex-direction:column}
+.live .pv{position:relative;aspect-ratio:16/9;background:#000 center/cover}
+.live .pv .tag{position:absolute;left:8px;top:8px;font:800 11px Inter;background:var(--rec);color:#fff;border-radius:6px;padding:3px 7px}
+.live .pv .vw{position:absolute;left:8px;bottom:8px;font:700 12px Inter;background:#000b;color:#fff;border-radius:6px;padding:3px 7px}
+.live .pv .cam{position:absolute;right:8px;bottom:8px;font:800 11px Inter;border-radius:6px;padding:3px 7px;background:#35d48f;color:#06140d}
+.live .pv .cam.no{background:#000b;color:#9a93ad}
+.warn{background:#ff3b5c1f;color:#ffb3c0;border-radius:12px;padding:10px 12px;font-size:13px;margin:6px 0 0}
+.live .pv .rank{position:absolute;right:8px;top:8px;font:400 20px/1 Anton,sans-serif;background:#000c;color:#fff;border-radius:8px;padding:5px 9px}
+.live.podium{border-color:var(--gold)}.live.podium .pv .rank{background:var(--gold);color:#140f00}
+.live .pv .vw.big{font:400 18px/1 Anton,sans-serif;padding:6px 9px}
+.why{font-size:12px;color:#ffd98a;background:#ffb21a14;border-radius:8px;padding:5px 8px;line-height:1.35}
+.topline{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.live .pv .mine{position:absolute;right:8px;top:40px;font:800 11px Inter;background:var(--gold);color:#140f00;border-radius:6px;padding:3px 7px}
+.live .b{padding:10px 12px 12px;display:flex;flex-direction:column;gap:8px}
+.live .who{display:flex;align-items:center;gap:8px;font-weight:700}.live .who img{width:28px;height:28px;border-radius:50%;background:var(--panel2)}
+.live .t{font-size:13px;color:var(--muted);line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.chips{display:flex;gap:5px;flex-wrap:wrap}.chip{font-size:11px;padding:3px 8px;border-radius:99px;background:#9146ff26;color:#cbb3ff}
+/* clip */
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{min-height:42px;padding:6px 12px;border-radius:11px;border:1px solid var(--line);background:var(--bg);color:var(--muted);font:600 14px Inter;cursor:pointer}
+.seg button.on{border-color:var(--gold);color:var(--ink);background:#ffb21a1a}
+select,input.t{min-height:44px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:11px;padding:8px 10px;font:500 16px Inter;width:100%}
+.bar select{flex:1 1 140px;width:auto;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media(min-width:640px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(min-width:900px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.clip{background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden;display:flex;flex-direction:column}
+.top{position:relative}.top video{width:100%;aspect-ratio:9/16;background:#000;display:block}
+.ring{--v:0;position:absolute;right:8px;top:8px;width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--rc,var(--gold)) calc(var(--v)*1%),#2d2840 0)}
+.ring::before{content:"";position:absolute;inset:5px;border-radius:50%;background:#0d0b14}.ring b{position:relative;font:400 17px Anton,sans-serif}.ring.mid{--rc:var(--tw)}.ring.lo{--rc:#5a5470}
+.new{position:absolute;left:8px;top:8px;font:800 11px Inter;background:var(--rec);color:#fff;border-radius:7px;padding:3px 7px}
+.clip .b{padding:10px;display:flex;flex-direction:column;gap:8px}
+.meta{display:flex;justify-content:space-between;gap:6px;font-size:12px;color:var(--muted)}
+.h{font-weight:700;font-size:14px;line-height:1.3}
+.subs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px 10px}
+.s{font-size:11px;color:var(--muted)}.s div{height:3px;border-radius:2px;background:#2d2840;margin-top:2px;overflow:hidden}.s i{display:block;height:100%;background:var(--gold)}
+.feat{display:flex;gap:4px;flex-wrap:wrap}.feat span{font-size:11px;padding:2px 7px;border-radius:6px;background:var(--panel2);color:var(--muted)}
+details summary{cursor:pointer;font-size:13px;color:var(--muted)}.cap{white-space:pre-wrap;font-size:13px;user-select:text;-webkit-user-select:text;margin:6px 0 0}
+.btn{min-height:46px;border:0;border-radius:13px;padding:10px 16px;font:700 15px Inter,system-ui,sans-serif;background:var(--panel2);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
+.btn.primary{background:var(--gold);color:#140f00}.btn.tw{background:var(--tw);color:#fff}.btn.sm{min-height:42px;padding:8px 12px;font-size:14px;border-radius:11px}.btn.block{width:100%}
+.btn:disabled{opacity:.5}
+.btn:focus-visible,select:focus-visible,input:focus-visible,.seg button:focus-visible{outline:2px solid var(--tw);outline-offset:2px}
+.empty{text-align:center;color:var(--muted);padding:34px 12px;background:var(--panel);border:1px dashed var(--line);border-radius:18px}
+/* fogli dal basso */
+.sheet-bg{position:fixed;inset:0;background:#000a;z-index:40;opacity:0;pointer-events:none;transition:opacity .2s}
+.sheet-bg.on{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:41;max-height:92vh;overflow:auto;background:var(--panel);border-top:1px solid var(--line);border-radius:22px 22px 0 0;padding:10px 18px calc(18px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .28s cubic-bezier(.2,.8,.2,1);max-width:640px;margin:0 auto}
+.sheet.on{transform:none;visibility:visible}
+.sheet:not(.on){visibility:hidden;transition:transform .28s,visibility 0s .28s}
+.sheet .grab{width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto 12px}
+.sheet h3{font:400 24px/1.15 Anton,sans-serif;margin:0 0 4px}
+.styles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0}
+.style{border:1px solid var(--line);background:var(--bg);border-radius:14px;padding:10px;text-align:left;color:var(--ink);cursor:pointer;display:flex;flex-direction:column;gap:3px;min-height:84px}
+.style b{font-size:14px;display:flex;align-items:center;gap:6px}.style b i{width:10px;height:10px;border-radius:3px;background:var(--sc)}
+.style small{color:var(--muted);font-size:12px;line-height:1.3}
+.style.on{border-color:var(--sc);box-shadow:0 0 0 1px var(--sc);background:color-mix(in srgb,var(--sc) 10%,var(--bg))}
+.lbl{font-size:13px;color:var(--muted);font-weight:600;margin:12px 0 6px}
+.steps{margin:6px 0 0;padding-left:20px;color:var(--muted);font-size:14px}.steps li{margin:5px 0}.steps a{color:var(--gold)}
+/* schede in basso */
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:8px max(12px,env(safe-area-inset-left)) calc(8px + env(safe-area-inset-bottom));background:#0d0b14e8;-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border-top:1px solid var(--line)}
+.tabbar button{min-height:50px;border:0;background:none;color:var(--muted);font:700 12px Inter;display:flex;flex-direction:column;align-items:center;gap:3px;border-radius:12px;cursor:pointer;position:relative}
+.tabbar button svg{width:22px;height:22px}.tabbar button.on{color:var(--ink);background:#ffffff0d}.tabbar button.on svg{color:var(--gold)}
+.tabbar .badge{position:absolute;top:4px;left:calc(50% + 8px);background:var(--rec);color:#fff;font:800 10px Inter;border-radius:9px;padding:1px 5px;min-width:16px}
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#2d2840;padding:11px 16px;border-radius:14px;font-weight:600;font-size:14px;opacity:0;transition:.2s;pointer-events:none;z-index:50;max-width:90vw;text-align:center}
+.toast.on{opacity:1}
+.hidden{display:none!important}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-scout" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="24" cy="24" r="18" opacity=".35"/><circle cx="24" cy="24" r="10" opacity=".6"/><path d="M24 24 38 12"/><circle cx="33" cy="30" r="3" fill="currentColor" stroke="none"/><circle cx="24" cy="24" r="2.5" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-hunter" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="24" cy="24" r="14"/><path d="M24 4v10M24 34v10M4 24h10M34 24h10"/><circle cx="24" cy="24" r="4" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-judge" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M24 6l5 10 11 1.6-8 7.8 1.9 11L24 31l-9.9 5.4L16 25.4 8 17.6 19 16z"/><path d="M14 42h20" opacity=".6"/></symbol>
+  <symbol id="i-editor" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="14" y="5" width="20" height="38" rx="5"/><path d="M21 19l8 5-8 5z" fill="currentColor"/><path d="M8 14l-4 4M40 14l4 4M8 34l-4-4M40 34l4-4" opacity=".6"/></symbol>
+</svg>
+
+<div class="wrap">
+  <header>
+    <h1>Clip<span>Forge</span> GTA</h1>
+    <button class="iconbtn" id="openSet" aria-label="Impostazioni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  </header>
+
+  <!-- AGENTI -->
+  <div class="view on" id="v-agenti">
+    <section class="card">
+      <h2>La squadra al lavoro</h2>
+      <p class="lead" id="teamLead">Ogni 20 minuti la catena riparte da sola.</p>
+      <div class="chain">
+        <div class="agent" id="ag-scout" style="--c:var(--scout)"><div class="ic"><svg><use href="#i-scout"/></svg></div><b>Scout</b><small id="st-scout">Top streamer e clip virali</small></div>
+        <div class="agent" id="ag-hunter" style="--c:var(--hunter)"><div class="ic"><svg><use href="#i-hunter"/></svg></div><b>Hunter</b><small id="st-hunter">Registra, legge la chat</small></div>
+        <div class="agent" id="ag-judge" style="--c:var(--judge)"><div class="ic"><svg><use href="#i-judge"/></svg></div><b>Judge</b><small id="st-judge">Scarta le scene piatte</small></div>
+        <div class="agent" id="ag-editor" style="--c:var(--editor)"><div class="ic"><svg><use href="#i-editor"/></svg></div><b>Editor</b><small id="st-editor">Monta, zoom, sottotitoli</small></div>
+      </div>
+      <div class="runline"><b id="runTitle"><span class="dot"></span>Collegamento…</b><small id="runTime"></small></div>
+      <div class="pbar"><i id="runBar"></i></div>
+    </section>
+
+    <section class="card">
+      <h2 id="hypeTitle">Radar dell'hype</h2>
+      <p class="lead" id="hypeLead">Come l'Hunter ha letto l'ultima live, secondo per secondo.</p>
+      <div class="fig" id="hypeFig"><svg id="hypeSvg" role="img" aria-label="Andamento dell'hype nell'ultima live analizzata"></svg></div>
+      <div class="legend"><span style="--c:var(--gold)">hype</span><span style="--c:var(--hunter)">urla e reazioni</span><span style="--c:var(--scout)">azione nel gioco</span><span style="--c:var(--ok)">chat</span><span style="--c:#ffb21a55">clip scelte</span><span style="--c:#5a5470">scartate dal Judge</span><span style="--c:#fff">▲ zoom · ● clip spettatori</span></div>
+      <div class="stats" id="stats"></div>
+    </section>
+  </div>
+
+  <!-- LIVE -->
+  <div class="view" id="v-live">
+    <div class="bar" style="justify-content:space-between">
+      <div><h2 style="margin:0" id="liveH">Top streamer GTA in live</h2><p class="lead" style="margin:2px 0 0" id="liveLead">Streamer in inglese, classificati per spettatori.</p></div>
+      <button class="btn sm" id="refreshLive">Aggiorna</button>
+    </div>
+    <div class="seg" id="camFilter" style="margin-bottom:12px"><button data-f="top">🏆 Top live</button><button data-f="cam">Webcam</button><button data-f="vir">🔥 Virali oggi</button></div>
+    <div class="topline" id="topline"></div>
+    <div class="lives" id="lives"></div>
+  </div>
+
+  <!-- CLIP -->
+  <div class="view" id="v-clip">
+    <div class="bar">
+      <div class="seg" id="sort"><button data-o="new" class="on">Più nuove</button><button data-o="viral">Più virali</button></div>
+      <select id="filter" aria-label="Streamer"><option value="">Tutti gli streamer</option></select>
+    </div>
+    <div class="grid" id="grid"></div>
+  </div>
+</div>
+
+<nav class="tabbar" id="tabbar" aria-label="Sezioni">
+  <button data-v="agenti" class="on"><svg viewBox="0 0 48 48"><use href="#i-hunter"/></svg>Agenti</button>
+  <button data-v="live"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M7.8 16.2a6 6 0 0 1 0-8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 19.1a10 10 0 0 1 0-14.2M19.1 4.9a10 10 0 0 1 0 14.2"/></svg>Live<span class="badge hidden" id="liveBadge"></span></button>
+  <button data-v="clip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="7" height="12" rx="2"/><rect x="13" y="9" width="7" height="12" rx="2"/></svg>Clip<span class="badge hidden" id="clipBadge"></span></button>
+</nav>
+
+<div class="sheet-bg" id="sheetBg"></div>
+<!-- foglio: clippa questa live -->
+<div class="sheet" id="sheetClip" role="dialog" aria-modal="true" aria-labelledby="scTitle">
+  <div class="grab"></div>
+  <h3 id="scTitle">Vuoi clippare questa live?</h3>
+  <p class="lead" id="scSub"></p>
+  <p class="warn hidden" id="scWarn">Questa live non ha la webcam: la clip sarà solo gioco, a tutto schermo.</p>
+  <p class="why hidden" id="scVir">Clip già scelta dal pubblico di Twitch: l'Editor la rimonta in 9:16 con facecam, zoom e sottotitoli.</p>
+  <div class="lbl">In che stile?</div>
+  <div class="styles" id="styles"></div>
+  <div class="lbl" id="minsLbl">Quanto registrare</div>
+  <div class="seg" id="mins"><button data-m="5">5 min</button><button data-m="10" class="on">10 min</button><button data-m="15">15 min</button><button data-m="20">20 min</button></div>
+  <div class="lbl">Facecam</div>
+  <select id="cam"><option value="auto">Automatica (la trova l'Hunter)</option><option value="br">In basso a destra</option><option value="bl">In basso a sinistra</option><option value="tr">In alto a destra</option><option value="tl">In alto a sinistra</option><option value="none">Nessuna facecam</option></select>
+  <button class="btn primary block" id="goClip" style="margin-top:16px">Sì, clippa questa live</button>
+  <button class="btn block" id="noClip" style="margin-top:8px">No, annulla</button>
+</div>
+<!-- foglio: impostazioni / chiave -->
+<div class="sheet" id="sheetSet" role="dialog" aria-modal="true" aria-labelledby="ssTitle">
+  <div class="grab"></div>
+  <h3 id="ssTitle">Tempo reale (facoltativo)</h3>
+  <p class="lead"><b>Non serve per clippare</b>: "Clippa" funziona già, basta toccare Create su GitHub. Con una chiave GitHub invece gli agenti si aggiornano ogni pochi secondi e le live partono con un tocco solo. La chiave resta salvata solo su questo telefono.</p>
+  <ol class="steps">
+    <li>Apri <a id="patLink" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">questa pagina di GitHub</a>.</li>
+    <li><b>Token name:</b> scrivi <b>ClipForge</b>. <b>Expiration:</b> scegli 1 anno.</li>
+    <li><b>Repository access:</b> <i>Only select repositories</i> → <b>clipforge-gta</b>.</li>
+    <li><b>Permissions → Repository → Actions:</b> <i>Read and write</i>.</li>
+    <li>Tocca <b>Generate token</b>, copia il codice (inizia con <b>github_pat_</b>) e incollalo qui sotto.</li>
+  </ol>
+  <input class="t" id="pat" type="password" placeholder="github_pat_…" autocomplete="off" autocapitalize="off" style="margin-top:10px">
+  <button class="btn primary block" id="savePat" style="margin-top:10px">Salva e prova</button>
+  <button class="btn block hidden" id="delPat" style="margin-top:8px">Scollega questo telefono</button>
+  <p class="lead" id="patMsg" style="margin-top:10px"></p>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+{
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const safeUrl = u => /^https:\/\//.test(String(u||"")) ? esc(u) : "";
+const toast = t => { const el = $("toast"); el.textContent = t; el.classList.add("on"); clearTimeout(el._t); el._t = setTimeout(()=>el.classList.remove("on"), 2800); };
+const store = { get(k,d){ try{ const v = localStorage.getItem("cfg_"+k); return v===null ? d : JSON.parse(v); }catch(e){ return d; } }, set(k,v){ try{ localStorage.setItem("cfg_"+k, JSON.stringify(v)); }catch(e){} }, del(k){ try{ localStorage.removeItem("cfg_"+k); }catch(e){} } };
+const ago = ts => { const m = Math.round((Date.now()/1000 - ts)/60); return m < 1 ? "adesso" : m < 60 ? `${m} min fa` : m < 1440 ? `${Math.round(m/60)} h fa` : `${Math.round(m/1440)} g fa`; };
+const mmss = s => `${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,"0")}`;
+const kfmt = n => n >= 1000 ? (n/1000).toFixed(n >= 10000 ? 0 : 1).replace(".0","") + "k" : String(n);
+
+const STYLES = {
+  hype:{n:"Hype & rage", d:"Urla e reazioni forti, zoom sulla faccia", c:"#ffd400"},
+  funny:{n:"Funny RP", d:"Battute e scene assurde, frasi come titolo", c:"#4dff91"},
+  action:{n:"Inseguimenti", d:"Fughe, schianti, polizia, zoom e scossa", c:"#ff3b5c"},
+  drama:{n:"Drama RP", d:"Litigi e dialoghi, clip più lunghe", c:"#b48cff"}
+};
+const host = location.hostname, OWNER = host.endsWith(".github.io") ? host.split(".")[0] : "jayanithbuddhi-create";
+const REPO = location.pathname.split("/").filter(Boolean)[0] || "clipforge-gta";
+const API = `https://api.github.com/repos/${OWNER}/${REPO}`;
+let token = store.get("pat", "");
+let clips = [], lives = [], virali = [], status = {}, sortBy = store.get("sort","new"), filterCh = "", seen = store.get("seen", 0), seenLive = store.get("seenLive", 0);
+
+/* ---------- schede ---------- */
+function showView(v){
+  document.querySelectorAll(".view").forEach(x => x.classList.toggle("on", x.id === "v-"+v));
+  [...$("tabbar").children].forEach(b => b.classList.toggle("on", b.dataset.v === v));
+  if (v === "clip"){ store.set("seen", Math.max(seen, ...clips.map(c=>c.created), 0)); $("clipBadge").classList.add("hidden"); }
+  if (v === "live"){ store.set("seenLive", Date.now()/1000); $("liveBadge").classList.add("hidden"); }
+  if (v === "agenti") requestAnimationFrame(drawHype);
+  window.scrollTo({top:0});
+}
+$("tabbar").addEventListener("click", e => { const b = e.target.closest("button"); if (b) showView(b.dataset.v); });
+
+/* ---------- dati della galleria ---------- */
+async function getJSON(p){ try{ return await (await fetch(p + "?t=" + Date.now())).json(); }catch(e){ return null; } }
+async function load(){
+  const [c, l, s] = await Promise.all([getJSON("clips.json"), getJSON("live.json"), getJSON("status.json")]);
+  clips = Array.isArray(c) ? c : []; lives = ((l && l.live) || []).slice().sort((a,b) => (b.spettatori||0) - (a.spettatori||0)); virali = (l && l.virali) || []; status = s || {};
+  liveUpd = l && l.aggiornato ? ` · aggiornato ${ago(l.aggiornato)}` : "";
+  const chs = [...new Set(clips.map(x => x.ch))];
+  $("filter").innerHTML = `<option value="">Tutti gli streamer</option>` + chs.map(x => `<option value="${esc(x)}" ${x===filterCh?"selected":""}>@${esc(x)}</option>`).join("");
+  const fresh = clips.filter(x => x.created > seen).length;
+  $("clipBadge").textContent = fresh; $("clipBadge").classList.toggle("hidden", !fresh);
+  renderLives(); renderClips(); renderStats(); drawHype();
+}
+
+/* ---------- catena degli agenti in tempo reale (API di GitHub) ---------- */
+const STEP_AGENT = [["Scout","scout"],["Hunter · registra","hunter"],["Hunter · analizza","judge"],["Judge + Editor","editor"],["Pubblica","editor"]];
+const AG = ["scout","hunter","judge","editor"];
+const IDLE = {scout:"Top streamer e clip virali", hunter:"Registra, legge la chat", judge:"Scarta le scene piatte", editor:"Monta, zoom, sottotitoli"};
+function setAgents(active, done, notes){
+  AG.forEach(a => { const el = $("ag-"+a); el.classList.toggle("run", a === active); el.classList.toggle("done", done.includes(a) && a !== active);
+    $("st-"+a).textContent = (notes && notes[a]) || IDLE[a]; });
+}
+let pollT = null, lastRun = null;
+async function gh(path){
+  const r = await fetch(API + path, {headers: Object.assign({"Accept":"application/vnd.github+json"}, token ? {"Authorization":"Bearer "+token} : {})});
+  if (r.status === 403 || r.status === 429) throw new Error("limite");
+  if (!r.ok) throw new Error("http " + r.status);
+  return r.json();
+}
+async function poll(){
+  clearTimeout(pollT);
+  let next = token ? 12000 : 120000;
+  try{
+    const runs = await gh("/actions/workflows/clipforge.yml/runs?per_page=1");
+    const run = runs.workflow_runs && runs.workflow_runs[0];
+    if (!run){ $("runTitle").innerHTML = `<span class="dot"></span>Nessun giro ancora`; }
+    else if (run.status !== "completed"){
+      const jobs = await gh(`/actions/runs/${run.id}/jobs`);
+      const steps = (jobs.jobs && jobs.jobs[0] && jobs.jobs[0].steps) || [];
+      let active = run.status === "queued" ? "scout" : null, done = [], notes = {}, cur = null;
+      for (const [prefix, ag] of STEP_AGENT){
+        const st = steps.find(s => s.name.startsWith(prefix)); if (!st) continue;
+        if (st.status === "completed" && st.conclusion === "success") done.push(ag);
+        if (st.status === "in_progress"){ active = ag; cur = st; }
+      }
+      if (done.includes("judge") && !done.includes("hunter")) done.push("hunter");
+      const lav = (status.lavori || [])[0];
+      if (lav){ notes.scout = (status.lavori||[]).map(x => x.ch).slice(0,3).join(", "); }
+      if (active === "hunter" && cur && lav){
+        const liveJob = (status.lavori||[]).find(x => x.tipo !== "clip") || lav;
+        const el = (Date.now() - Date.parse(cur.started_at))/1000, tot = (liveJob.tipo === "clip" ? 0 : liveJob.minuti)*60;
+        notes.hunter = tot ? `Registra ${lav.ch} + chat · ${mmss(Math.min(el,tot))}/${mmss(tot)}` : "Scarica le clip virali";
+        $("runBar").style.width = Math.round(25 + 40*Math.min(1, tot ? el/tot : .5)) + "%";
+      } else $("runBar").style.width = ({scout:12, hunter:30, judge:70, editor:88}[active] || 5) + "%";
+      if (active === "judge") notes.judge = "Ascolta, legge la chat, vota";
+      if (active === "editor") notes.editor = "Monta: zoom e sottotitoli";
+      setAgents(active, done, notes);
+      $("runTitle").innerHTML = `<span class="dot run"></span>${run.status === "queued" ? "In coda" : "Al lavoro"}${lav ? " su " + esc(lav.ch) : ""}`;
+      $("runTime").textContent = "partito " + ago(Date.parse(run.run_started_at || run.created_at)/1000);
+      $("teamLead").textContent = "Gli agenti si accendono mentre lavorano.";
+      next = token ? 8000 : 120000;
+    } else {
+      if (lastRun && lastRun.status !== "completed") load();
+      setAgents(null, [], null);
+      $("runBar").style.width = "0";
+      const ok = run.conclusion === "success";
+      $("runTitle").innerHTML = `<span class="dot ${ok?"ok":"live"}"></span>${ok ? "In attesa del prossimo giro" : "L'ultimo giro ha avuto un problema"}`;
+      $("runTime").textContent = "ultimo giro " + ago(Date.parse(run.updated_at)/1000) + (status.nuove_clip ? ` · +${status.nuove_clip} clip` : "");
+      $("teamLead").textContent = "Ogni 20 minuti la catena riparte da sola.";
+    }
+    lastRun = run;
+  }catch(e){
+    $("runTitle").innerHTML = `<span class="dot"></span>${e.message === "limite" ? "Aggiornamento in pausa (collega i comandi per il tempo reale)" : "Stato non disponibile"}`;
+    next = 180000;
+  }
+  pollT = setTimeout(poll, next);
+}
+
+/* ---------- radar dell'hype ---------- */
+function drawHype(){
+  const a = status.analisi, svg = $("hypeSvg");
+  if (!a || !a.hype || !a.hype.length){ svg.innerHTML = ""; $("hypeLead").textContent = "Il grafico compare dopo la prima live analizzata."; return; }
+  $("hypeTitle").textContent = `Radar dell'hype · ${a.ch}`;
+  const sc = a.scelte.length, sk = (a.scartate||[]).length;
+  $("hypeLead").textContent = `${mmss(a.durata)} di live · ${a.candidati} momenti ascoltati, ${sc} sopra ${a.soglia||60}/100` + (sk ? `, ${sk} scartati perché piatti` : "") + (a.chat && a.chat.length ? " · chat letta" : "") + (a.facecam ? " · facecam trovata" : "")
+    + (sc ? "" : " · nessuna clip: non è successo niente di forte");
+  const W = svg.clientWidth, H = svg.clientHeight; if (!W) return;
+  const n = a.hype.length, mx = Math.max(1, ...a.hype), pad = 18;
+  const x = i => i/(n-1||1)*W, xs = t => t/(a.passo*(n-1)||1)*W, y = v => H - pad - Math.min(v,mx)/mx*(H - pad - 16);
+  const path = arr => arr.map((v,i) => `${i?"L":"M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  let s = "";
+  (a.scartate||[]).forEach(c => { s += `<rect x="${xs(c.start).toFixed(1)}" y="0" width="${Math.max(3,xs(c.end)-xs(c.start)).toFixed(1)}" height="${H-pad}" fill="#5a547033" rx="4"/>`
+    + `<text x="${(xs(c.start)+4).toFixed(1)}" y="13" fill="#7a7390" font-size="11" font-family="Inter">${+c.viral}</text>`; });
+  (a.spettatori||[]).forEach(t => { s += `<circle cx="${xs(Math.max(0,t)).toFixed(1)}" cy="${H-pad-4}" r="4" fill="#35d48f" stroke="#0d0b14" stroke-width="1.5"/>`; });
+  a.scelte.forEach((c,k) => { s += `<rect x="${xs(c.start).toFixed(1)}" y="0" width="${Math.max(3,xs(c.end)-xs(c.start)).toFixed(1)}" height="${H-pad}" fill="#ffb21a22" rx="4"/>`
+    + `<text x="${(xs(c.start)+4).toFixed(1)}" y="13" fill="#ffb21a" font-size="12" font-weight="800" font-family="Inter">${+c.viral}</text>`
+    + (c.zoom||[]).map(t => `<path d="M${xs(t).toFixed(1)},${H-pad-2}l-5,-8h10z" fill="#fff"/>`).join(""); });
+  s += `<path d="${path(a.azione)}" fill="none" stroke="#4fc3ff" stroke-opacity=".7" stroke-width="1.2"/>`;
+  s += `<path d="${path(a.urla)}" fill="none" stroke="#ff5c7a" stroke-opacity=".7" stroke-width="1.2"/>`;
+  if (a.chat && a.chat.length) s += `<path d="${path(a.chat)}" fill="none" stroke="#35d48f" stroke-opacity=".8" stroke-width="1.4"/>`;
+  s += `<path d="${path(a.hype)}L${W},${H-pad}L0,${H-pad}Z" fill="url(#hg)"/><path d="${path(a.hype)}" fill="none" stroke="#ffb21a" stroke-width="2.2"/>`;
+  s = `<defs><linearGradient id="hg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb21a" stop-opacity=".35"/><stop offset="1" stop-color="#ffb21a" stop-opacity="0"/></linearGradient></defs>` + s;
+  s += `<text x="0" y="${H-2}" fill="#9a93ad" font-size="12" font-family="Inter">0:00</text><text x="${W}" y="${H-2}" fill="#9a93ad" font-size="12" font-family="Inter" text-anchor="end">${mmss(a.durata)}</text>`;
+  svg.innerHTML = s;
+}
+const hypeRO = new ResizeObserver(drawHype); hypeRO.observe($("hypeFig"));
+function renderStats(){
+  const day = clips.filter(c => Date.now()/1000 - c.created < 86400).length;
+  const avg = clips.length ? Math.round(clips.reduce((s,c)=>s+(+c.viral||0),0)/clips.length) : 0;
+  $("stats").innerHTML = [[clips.length,"clip pronte"],[day,"ultime 24 ore"],[avg||"–","voto medio"]].map(([v,l]) => `<div class="stat"><b>${esc(v)}</b><small>${l}</small></div>`).join("");
+}
+
+/* ---------- live adesso: top streamer, webcam, clip virali ---------- */
+let liveUpd = "";
+let pick = null, pickStyle = "hype", pickMin = 10, liveMode = store.get("liveMode", "top");
+if (!["top","cam","vir"].includes(liveMode)) liveMode = "top";
+const dur = s => `${Math.round(+s||0)} s`;
+function renderLives(){
+  const fresh = lives.length && seenLive < (Date.now()/1000 - 3600);
+  $("liveBadge").textContent = lives.length; $("liveBadge").classList.toggle("hidden", !fresh);
+  [...$("camFilter").children].forEach(b => b.classList.toggle("on", b.dataset.f === liveMode));
+  const tot = lives.reduce((n,l) => n + (+l.spettatori||0), 0);
+  $("topline").classList.toggle("hidden", liveMode === "vir");
+  $("topline").innerHTML = [[lives.length,"live GTA in inglese"],[kfmt(tot),"spettatori totali"],[lives[0] ? kfmt(+lives[0].spettatori||0) : "–", lives[0] ? "#1 " + lives[0].nome : "il primo"]]
+    .map(([v,l]) => `<div class="stat"><b>${esc(v)}</b><small>${esc(l)}</small></div>`).join("");
+  if (liveMode === "vir"){
+    $("liveH").textContent = "Clip GTA virali di oggi";
+    $("liveLead").textContent = "I momenti più visti delle ultime 24 ore: il pubblico ha già scelto le scene forti." + liveUpd;
+    const done = new Set(clips.map(c => c.slug).filter(Boolean));
+    $("lives").innerHTML = virali.length ? virali.map((v,i) => `<article class="live${i<3?" podium":""}">
+      <div class="pv" style="background-image:url('${safeUrl(v.anteprima)}')"><span class="tag" style="background:var(--gold);color:#140f00">🔥 VIRALE</span><span class="vw big">${kfmt(+v.views||0)} views</span><span class="rank">#${i+1}</span><span class="cam ${v.webcam?"":"no"}">${v.webcam?"WEBCAM":dur(v.durata)}</span></div>
+      <div class="b"><div class="who">${v.avatar?`<img src="${safeUrl(v.avatar)}" alt="">`:""}${esc(v.nome)}<small style="color:var(--muted);font-weight:500;margin-left:auto">${v.creata?ago(v.creata):""}</small></div>
+        <div class="t">${esc(v.titolo)}</div>
+        <div style="display:flex;gap:8px">${done.has(v.slug) ? `<button class="btn sm" style="flex:1" disabled>Già nella galleria ✓</button>` : `<button class="btn primary sm" style="flex:1" data-vir="${i}">Rifai in 9:16</button>`}<a class="btn sm" href="https://clips.twitch.tv/${encodeURIComponent(v.slug)}" target="_blank" rel="noopener">Guarda</a></div>
+      </div></article>`).join("")
+      : `<div class="empty" style="grid-column:1/-1">Le clip virali arrivano al prossimo giro dello Scout.</div>`;
+    return;
+  }
+  $("liveH").textContent = liveMode === "top" ? "Top streamer GTA in live" : "Live GTA con webcam";
+  $("liveLead").textContent = (liveMode === "top" ? "Classificati per spettatori, in inglese." : "Solo live con la faccia dello streamer: perfette per il formato facecam + gioco.") + liveUpd;
+  const shown = lives.map((l,i) => [l,i]).filter(([l]) => liveMode !== "cam" || l.webcam);
+  $("lives").innerHTML = shown.length ? shown.map(([l,i]) => `<article class="live${i<3?" podium":""}">
+    <div class="pv" style="background-image:url('${safeUrl(l.anteprima)}')"><span class="tag">${l.piattaforma === "youtube" ? "LIVE · YouTube" : "LIVE"}</span>${l.spettatori ? `<span class="vw big">👁 ${kfmt(+l.spettatori)}</span>` : ""}<span class="rank">#${i+1}</span>${l.tuo?`<span class="mine">TUO</span>`:""}<span class="cam ${l.webcam?"":"no"}">${l.webcam?"WEBCAM":"senza webcam"}</span></div>
+    <div class="b"><div class="who">${l.avatar?`<img src="${safeUrl(l.avatar)}" alt="">`:""}${esc(l.nome)}</div>
+      <div class="t">${esc(l.titolo)}</div>
+      <div class="chips"><span class="chip" style="background:${STYLES[l.stile]?STYLES[l.stile].c+"26":"#9146ff26"};color:${STYLES[l.stile]?STYLES[l.stile].c:"#cbb3ff"}">${esc(STYLES[l.stile]?STYLES[l.stile].n:"")}</span>${(l.tag||[]).slice(0,3).map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</div>
+      <div style="display:flex;gap:8px"><button class="btn primary sm" style="flex:1" data-clip="${i}">Clippa</button><a class="btn sm" href="${l.url ? safeUrl(l.url) : "https://www.twitch.tv/" + encodeURIComponent(l.login)}" target="_blank" rel="noopener">Guarda</a></div>
+    </div></article>`).join("")
+    : `<div class="empty" style="grid-column:1/-1">${lives.length ? "Nessuna live con webcam in questo momento. Tocca <b>Top live</b> per vederle tutte." : "La lista arriva al prossimo giro dello Scout."}</div>`;
+}
+$("camFilter").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; liveMode = b.dataset.f; store.set("liveMode", liveMode); renderLives(); });
+$("styles").innerHTML = Object.entries(STYLES).map(([k,s]) => `<button class="style" data-s="${k}" style="--sc:${s.c}"><b><i></i>${s.n}</b><small>${s.d}</small></button>`).join("");
+function openSheet(id){ $("sheetBg").classList.add("on"); $(id).classList.add("on"); }
+function closeSheets(){ $("sheetBg").classList.remove("on"); document.querySelectorAll(".sheet").forEach(s => s.classList.remove("on")); }
+$("sheetBg").addEventListener("click", closeSheets); $("noClip").addEventListener("click", closeSheets);
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeSheets(); });
+function setStyle(k){ pickStyle = k; [...$("styles").children].forEach(b => b.classList.toggle("on", b.dataset.s === k)); }
+$("styles").addEventListener("click", e => { const b = e.target.closest(".style"); if (b) setStyle(b.dataset.s); });
+$("mins").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; pickMin = +b.dataset.m; [...$("mins").children].forEach(x => x.classList.toggle("on", x === b)); });
+function viralSheet(on){ ["mins","minsLbl"].forEach(id => $(id).classList.toggle("hidden", on)); $("scVir").classList.toggle("hidden", !on);
+  $("goClip").textContent = on ? "Sì, rifai questa clip" : "Sì, clippa questa live"; }
+$("lives").addEventListener("click", e => {
+  const v = e.target.closest("[data-vir]");
+  if (v){ const c = virali[+v.dataset.vir];
+    pick = {nome:c.nome, login:c.login, link:`https://clips.twitch.tv/${c.slug}`, virale:true};
+    $("scTitle").textContent = `Rifare la clip di ${c.nome} in 9:16?`;
+    $("scSub").textContent = `${kfmt(+c.views||0)} views · ${c.titolo}`.slice(0, 140);
+    setStyle(c.stile || "hype"); $("cam").value = "auto"; $("scWarn").classList.add("hidden"); viralSheet(true); openSheet("sheetClip"); return; }
+  const b = e.target.closest("[data-clip]"); if (!b) return;
+  pick = lives[+b.dataset.clip]; $("scTitle").textContent = `Vuoi clippare la live di ${pick.nome}?`;
+  $("scSub").textContent = `#${+b.dataset.clip+1} · ${kfmt(+pick.spettatori||0)} spettatori · ${pick.titolo}`.slice(0, 140);
+  setStyle(pick.stile || "hype"); $("cam").value = pick.webcam ? "auto" : "none"; $("scWarn").classList.toggle("hidden", !!pick.webcam); viralSheet(false); openSheet("sheetClip"); });
+function issueUrl(inputs){
+  const title = inputs.solo_scout ? "ClipForge: aggiorna live" : `ClipForge: clippa ${inputs.link.split("/").pop().slice(0,60)}`;
+  const body = Object.entries(inputs).map(([k,v]) => `${k}: ${v}`).join("\n") + "\n\n(Tocca Create / Submit: gli agenti partono da soli)";
+  return `https://github.com/${OWNER}/${REPO}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+}
+function openIssue(inputs){
+  const a = document.createElement("a"); a.href = issueUrl(inputs); a.target = "_blank"; a.rel = "noopener";
+  document.body.appendChild(a); a.click(); a.remove();
+}
+async function dispatch(inputs){
+  const r = await fetch(API + "/actions/workflows/clipforge.yml/dispatches", {method:"POST",
+    headers:{"Accept":"application/vnd.github+json","Authorization":"Bearer "+token,"Content-Type":"application/json"},
+    body: JSON.stringify({ref:"main", inputs})});
+  if (r.status !== 204) throw new Error(r.status === 401 || r.status === 403 ? "chiave" : "http " + r.status);
+}
+$("goClip").addEventListener("click", async () => {
+  if (!pick) return;
+  const inputs = pick.virale ? {link:pick.link, stile:pickStyle, facecam:$("cam").value}
+    : {link:pick.url || `https://www.twitch.tv/${pick.login}`, stile:pickStyle, minuti:String(pickMin), facecam:$("cam").value};
+  if (!token){ openIssue(inputs); closeSheets(); toast("Su GitHub tocca Create: gli agenti partono"); setTimeout(poll, 60000); return; }
+  const b = $("goClip"); b.disabled = true; b.textContent = "Avvio gli agenti…";
+  try{
+    await dispatch(inputs);
+    closeSheets(); toast(`Agenti partiti su ${pick.nome}: clip in circa ${pick.virale ? 6 : pickMin + 6} min`); showView("agenti"); setTimeout(poll, 4000);
+  }catch(err){ toast(err.message === "chiave" ? "La chiave non è valida: ricollegala" : "Avvio non riuscito, riprova"); if (err.message === "chiave") openSheet("sheetSet"); }
+  b.disabled = false; b.textContent = pick && pick.virale ? "Sì, rifai questa clip" : "Sì, clippa questa live";
+});
+$("refreshLive").addEventListener("click", async () => {
+  if (!token){ openIssue({solo_scout:"1"}); toast("Su GitHub tocca Create: lo Scout aggiorna la lista"); return; }
+  try{ await dispatch({solo_scout:"1"}); toast("Lo Scout controlla le live: lista nuova in ~2 min"); setTimeout(load, 120000); }
+  catch(e){ toast("Aggiornamento non riuscito"); }
+});
+
+/* ---------- impostazioni: chiave GitHub ---------- */
+function setUI(){ $("delPat").classList.toggle("hidden", !token); $("patMsg").textContent = token ? "Collegato: puoi clippare dalle Live e vedere gli agenti in tempo reale." : ""; }
+$("openSet").addEventListener("click", () => { setUI(); openSheet("sheetSet"); });
+$("savePat").addEventListener("click", async () => {
+  const v = $("pat").value.trim(); if (!v){ toast("Incolla la chiave"); return; }
+  $("patMsg").textContent = "Provo la chiave…";
+  try{ const r = await fetch(API + "/actions/workflows", {headers:{"Accept":"application/vnd.github+json","Authorization":"Bearer "+v}});
+    if (!r.ok) throw 0; token = v; store.set("pat", v); $("pat").value = ""; setUI(); toast("Collegato"); closeSheets(); poll(); }
+  catch(e){ $("patMsg").textContent = "Chiave non valida: controlla di aver scelto clipforge-gta e Actions: Read and write."; }
+});
+$("delPat").addEventListener("click", () => { token = ""; store.del("pat"); setUI(); toast("Telefono scollegato"); });
+
+/* ---------- clip ---------- */
+const ring = v => `<div class="ring ${v>=75?"":v>=55?"mid":"lo"}" style="--v:${+v||0}"><b>${+v||"–"}</b></div>`;
+[...$("sort").children].forEach(b => b.classList.toggle("on", b.dataset.o === sortBy));
+function renderClips(){
+  let list = clips.filter(c => !filterCh || c.ch === filterCh);
+  list = [...list].sort((a,b) => sortBy === "viral" ? (b.viral-a.viral) || (b.created-a.created) : b.created-a.created);
+  $("grid").innerHTML = list.length ? list.map(c => `<article class="clip">
+    <div class="top"><video src="${esc(c.file)}" poster="${esc(c.poster)}" controls playsinline preload="none"></video>${ring(c.viral)}${c.created > seen ? `<span class="new">NUOVA</span>` : ""}</div>
+    <div class="b"><div class="meta"><span>@${esc(c.ch)}</span><span>${ago(c.created)}</span></div>
+      <div class="h">${esc(c.hook)}</div>
+      ${c.perche ? `<div class="why">Perché: ${esc(c.perche)}</div>` : ""}
+      <div class="feat">${c.fonte === "virale" ? `<span style="color:var(--gold)">🔥 virale${c.views?" · "+kfmt(+c.views)+" views":""}</span>` : ""}${c.stile && STYLES[c.stile] ? `<span style="color:${STYLES[c.stile].c}">${STYLES[c.stile].n}</span>` : ""}${c.sottotitoli?"<span>sottotitoli</span>":""}${c.zoom?`<span>${+c.zoom} zoom</span>`:""}${c.durata?`<span>${Math.round(c.durata)} s</span>`:""}</div>
+      ${c.subs ? `<div class="subs">${Object.entries(c.subs).map(([k,v]) => `<div class="s">${esc(k)} ${+v}<div><i style="width:${+v}%"></i></div></div>`).join("")}</div>` : ""}
+      <button class="btn primary sm" data-share="${esc(c.id)}">Condividi</button>
+      <button class="btn sm" data-copy="${esc(c.id)}">Copia caption</button>
+      <details><summary>Vedi caption</summary><p class="cap">${esc(c.caption)}</p></details>
+    </div></article>`).join("")
+    : `<div class="empty" style="grid-column:1/-1">Ancora nessuna clip qui.<br>Vai su <b>Live</b> e scegli una live da clippare.</div>`;
+}
+$("sort").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; sortBy = b.dataset.o; store.set("sort", sortBy);
+  [...$("sort").children].forEach(x => x.classList.toggle("on", x === b)); renderClips(); });
+$("filter").addEventListener("change", () => { filterCh = $("filter").value; renderClips(); });
+$("grid").addEventListener("click", async e => {
+  const sb = e.target.closest("[data-share]"), cb = e.target.closest("[data-copy]");
+  if (cb){ const c = clips.find(x => x.id === cb.dataset.copy);
+    try{ await navigator.clipboard.writeText(c.caption); toast("Caption copiata"); }catch(err){ toast("Tieni premuto sul testo per copiarlo"); } }
+  if (sb){ const c = clips.find(x => x.id === sb.dataset.share); sb.disabled = true; sb.textContent = "Preparo il video…";
+    try{ await navigator.clipboard.writeText(c.caption); }catch(err){}
+    try{
+      const blob = await (await fetch(c.file)).blob(), f = new File([blob], c.file.split("/").pop(), {type:"video/mp4"});
+      if (navigator.canShare && navigator.canShare({files:[f]})){ await navigator.share({files:[f]}); toast("Caption già copiata: incollala"); }
+      else { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); toast("Video scaricato · caption copiata"); }
+    }catch(err){ if (!(err && err.name === "AbortError")) toast("Condivisione non riuscita, riprova"); }
+    sb.disabled = false; sb.textContent = "Condividi"; }
+});
+
+load(); poll();
+document.addEventListener("visibilitychange", () => { if (!document.hidden){ load(); poll(); } });
+}
+</script>
+</body>
+</html>
